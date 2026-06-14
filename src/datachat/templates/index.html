@@ -955,21 +955,15 @@ function renderChart(idx, spec) {
   const canvas = document.getElementById(`chart-canvas-${idx}`);
   if (!canvas) return;
 
-  // Build data from the CSV via API — for now use the spec directly if it has data,
-  // otherwise generate a placeholder that shows the spec intent
-  const labels = [];
-  const values = [];
+  const dataPoints = Array.isArray(spec.data) ? spec.data : [];
+  const labels = dataPoints.map(d => String(d.label ?? ''));
+  const values = dataPoints.map(d => Number(d.value ?? 0));
 
-  // If spec has pre-computed data array use it
-  if (Array.isArray(spec.data) && spec.data.length) {
-    spec.data.forEach(d => {
-      labels.push(d.label ?? d[spec.x_column] ?? '');
-      values.push(d.value ?? d[spec.y_column] ?? 0);
-    });
-  } else {
-    // Show placeholder — real data requires CSV fetch which we'll do via the query API
-    labels.push('x');
-    values.push(0);
+  if (!labels.length) {
+    // No data — show a message instead of an empty chart
+    const parent = canvas.parentElement;
+    parent.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.8rem;">No data available for this chart</div>';
+    return;
   }
 
   const isPie = spec.type === 'pie' || spec.type === 'doughnut';

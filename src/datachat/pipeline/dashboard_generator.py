@@ -3,6 +3,7 @@ import json
 import logging
 import re
 
+import pandas as pd
 from sqlalchemy.orm import Session
 
 from datachat.db.models import DashboardRow, DatasetRow, DatasetUploadRow, UploadRow
@@ -50,6 +51,55 @@ def _extract_json(text: str) -> dict:
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
     return json.loads(text.strip())
+
+
+def _populate_chart_data(
+    charts: list[dict],
+    uploads: list[UploadRow],
+    upload_dir: str,
+) -> list[dict]:
+    """Read CSV files and inject real data points into each chart spec."""
+    # Build a lookup: original_filename → DataFrame
+    df_map: dict[str, pd.DataFrame] = {}
+    for upload in uploads:
+        path = str(get_upload_path(upload_dir, upload.filename))
+        try:
+            df_map[upload.original_filename] = pd.read_csv(path)
+        except Exception:
+            pass
+    # Also store by "combined" key — concatenate all DataFrames that share the same columns
+    if df_map:
+        try:
+            combined = pd.concat(list(df_map.values()), ignore_index=True)
+            df_map["combined"] = combined
+        except Exception:
+            pass
+
+    result = []
+    for spec in charts:
+        spec = dict(spec)
+        x_col = spec.get("x_column", "")
+        y_col = spec.get("y_column", "")
+        file_key = spec.get("file", "combined")
+
+        df = df_map.get(file_key)
+        if df is None:
+            df = df_map.get("combined")
+        if df is not None and x_col in df.columns and y_col in df.columns:
+            try:
+                # Aggregate: sum y per x label to keep chart readable
+                grouped = df.groupby(x_col, sort=False)[y_col].sum().reset_index()
+                spec["data"] = [
+                    {"label": str(row[x_col]), "value": float(row[y_col])}
+                    for _, row in grouped.iterrows()
+                ]
+            except Exception as exc:
+                logger.warning("Chart data population failed for spec %s: %s", spec.get("title"), exc)
+                spec["data"] = []
+        else:
+            spec["data"] = []
+        result.append(spec)
+    return result
 
 
 def _build_context(uploads: list[UploadRow], upload_dir: str) -> str:
@@ -101,6 +151,8 @@ def generate_dashboard(
         logger.error("Failed to parse dashboard JSON: %s\nRaw: %s", exc, result.text[:500])
         insights = ["Could not parse insights — try regenerating."]
         charts = []
+
+    charts = _populate_chart_data(charts, uploads, upload_dir)
 
     # Upsert: delete existing, insert fresh
     existing = session.get(DashboardRow, dataset_id)
