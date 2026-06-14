@@ -42,6 +42,46 @@ class QueryRow(Base):
     upload_id: Mapped[str] = mapped_column(Text, nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now
+    )
+
+
+class DatasetRow(Base):
+    __tablename__ = "datasets"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now
+    )
+
+
+class DatasetUploadRow(Base):
+    """Join table: which uploads belong to which dataset."""
+    __tablename__ = "dataset_uploads"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    dataset_id: Mapped[str] = mapped_column(Text, nullable=False)
+    upload_id: Mapped[str] = mapped_column(Text, nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now
+    )
+
+
+class DatasetQueryRow(Base):
+    __tablename__ = "dataset_queries"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    dataset_id: Mapped[str] = mapped_column(Text, nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_now
     )

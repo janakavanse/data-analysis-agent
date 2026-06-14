@@ -16,6 +16,22 @@ class QueryRequest(BaseModel):
     question: str
 
 
+def _query_out(row: QueryRow) -> dict:
+    return {
+        "id": row.id,
+        "upload_id": row.upload_id,
+        "question": row.question,
+        "answer": row.answer,
+        "tokens": {
+            "input": row.input_tokens,
+            "output": row.output_tokens,
+            "total": row.input_tokens + row.output_tokens,
+        },
+        "cost_usd": row.cost_usd,
+        "created_at": row.created_at.isoformat(),
+    }
+
+
 @router.post("")
 def create_query(body: QueryRequest, session: Session = Depends(get_session)) -> dict:
     if not body.question.strip():
@@ -33,13 +49,7 @@ def create_query(body: QueryRequest, session: Session = Depends(get_session)) ->
     except Exception as exc:
         raise api_error("llm_error", f"Failed to generate answer: {exc}", status_code=500)
 
-    return ok({
-        "id": qrow.id,
-        "upload_id": qrow.upload_id,
-        "question": qrow.question,
-        "answer": qrow.answer,
-        "created_at": qrow.created_at.isoformat(),
-    })
+    return ok(_query_out(qrow))
 
 
 @router.get("/{query_id}")
@@ -47,10 +57,4 @@ def get_query(query_id: str, session: Session = Depends(get_session)) -> dict:
     row = session.get(QueryRow, query_id)
     if row is None:
         raise api_error("not_found", "Query not found.", status_code=404)
-    return ok({
-        "id": row.id,
-        "upload_id": row.upload_id,
-        "question": row.question,
-        "answer": row.answer,
-        "created_at": row.created_at.isoformat(),
-    })
+    return ok(_query_out(row))

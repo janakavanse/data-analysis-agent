@@ -1,4 +1,3 @@
-import json
 import logging
 
 from sqlalchemy.orm import Session
@@ -29,12 +28,15 @@ def run_query(upload_id: str, question: str, session: Session, upload_dir: str) 
     )
 
     logger.info("Running query upload_id=%s is_stub=%s", upload_id, is_stub)
-    answer = provider.generate(prompt)
+    result = provider.generate(prompt)
 
     qrow = QueryRow(
         upload_id=upload_id,
         question=question,
-        answer=answer,
+        answer=result.text,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        cost_usd=result.cost_usd,
     )
     session.add(qrow)
     session.flush()

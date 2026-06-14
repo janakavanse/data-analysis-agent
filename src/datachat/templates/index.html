@@ -11,141 +11,255 @@
       background: #fff3cd; border-bottom: 2px solid #f0ad4e;
       padding: 10px 20px; text-align: center; font-weight: 600; font-size: 0.95rem;
     }
-    .container { max-width: 860px; margin: 0 auto; padding: 32px 16px; }
-    h1 { margin: 0 0 8px; font-size: 2rem; }
-    .subtitle { color: #555; margin: 0 0 32px; }
+    .container { max-width: 920px; margin: 0 auto; padding: 32px 16px; }
+    h1 { margin: 0 0 4px; font-size: 2rem; }
+    .subtitle { color: #555; margin: 0 0 28px; }
     .card {
       background: #fff; border: 1px solid #ddd; border-radius: 8px;
-      padding: 24px; margin-bottom: 24px;
+      padding: 24px; margin-bottom: 20px;
     }
-    h2 { margin: 0 0 16px; font-size: 1.2rem; }
-    label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.9rem; }
-    input[type="file"], textarea {
-      width: 100%; border: 1px solid #ccc; border-radius: 4px; padding: 8px; font-size: 0.95rem;
+    h2 { margin: 0 0 14px; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; }
+    label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.9rem; }
+    input[type="text"], input[type="file"], textarea, select {
+      width: 100%; border: 1px solid #ccc; border-radius: 4px;
+      padding: 8px; font-size: 0.95rem; background: #fff;
     }
-    textarea { resize: vertical; min-height: 80px; margin-bottom: 12px; }
+    textarea { resize: vertical; min-height: 72px; margin-bottom: 10px; }
+    .row { display: flex; gap: 10px; align-items: flex-end; }
+    .row input[type="text"] { flex: 1; }
     button {
       background: #2563eb; color: #fff; border: none; border-radius: 4px;
-      padding: 10px 20px; font-size: 0.95rem; cursor: pointer; margin-top: 12px;
+      padding: 9px 18px; font-size: 0.9rem; cursor: pointer; white-space: nowrap;
     }
     button:hover { background: #1d4ed8; }
     button:disabled { background: #93c5fd; cursor: not-allowed; }
-    .status { margin-top: 12px; font-size: 0.9rem; color: #444; }
-    .columns { margin-top: 12px; }
-    .columns span {
+    .status { margin-top: 10px; font-size: 0.88rem; color: #444; min-height: 1.2em; }
+    .error { color: #dc2626; }
+    .success { color: #16a34a; }
+    .tag {
       display: inline-block; background: #e0e7ff; color: #3730a3;
-      border-radius: 4px; padding: 3px 8px; margin: 3px; font-size: 0.82rem;
+      border-radius: 4px; padding: 2px 7px; margin: 2px; font-size: 0.8rem;
+    }
+    .file-list { margin-top: 10px; }
+    .file-item {
+      padding: 8px 10px; background: #f9fafb; border: 1px solid #e5e7eb;
+      border-radius: 4px; margin-bottom: 6px; font-size: 0.88rem;
     }
     .answer-box {
       background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px;
-      padding: 16px; margin-top: 16px; white-space: pre-wrap; font-size: 0.95rem;
+      padding: 14px; margin-top: 14px; white-space: pre-wrap; font-size: 0.93rem;
       line-height: 1.6;
     }
-    .error { color: #dc2626; margin-top: 8px; font-size: 0.9rem; }
-    #query-section { display: none; }
+    .token-info {
+      margin-top: 8px; font-size: 0.8rem; color: #6b7280;
+      display: flex; gap: 16px; flex-wrap: wrap;
+    }
+    .token-info strong { color: #374151; }
+    .hidden { display: none; }
+    .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; background: #2563eb; color: #fff;
+      border-radius: 50%; font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
 
 {% if is_stub %}
 <div class="stub-banner">
-  ⚠ Stub Mode — No GEMINI_API_KEY set. Answers are placeholder text. Set the key and restart to use real Gemini.
+  ⚠ Stub Mode — No GEMINI_API_KEY set. Answers are placeholder text, token counts show 0. Set the key and restart for real Gemini.
 </div>
 {% endif %}
 
 <div class="container">
   <h1>DataChat</h1>
-  <p class="subtitle">Upload a CSV, then ask questions about your data in plain English.</p>
+  <p class="subtitle">Create a dataset, upload multiple CSVs, then ask questions across all of them.</p>
 
-  <!-- Upload Panel -->
-  <div class="card" id="upload-card">
-    <h2>1. Upload your CSV</h2>
-    <label for="csv-file">Choose a CSV file</label>
-    <input type="file" id="csv-file" accept=".csv" />
-    <button id="upload-btn" onclick="uploadFile()">Upload</button>
-    <div class="status" id="upload-status"></div>
-    <div class="columns" id="column-list"></div>
+  <!-- Step 1: Dataset -->
+  <div class="card">
+    <h2><span class="step-num">1</span>Dataset</h2>
+    <div class="row">
+      <input type="text" id="dataset-name" placeholder="Dataset name (e.g. Q1 Sales)" />
+      <button onclick="createDataset()">Create new</button>
+    </div>
+    <div class="status" id="dataset-status"></div>
+
+    <div id="existing-wrap" class="hidden" style="margin-top:14px;">
+      <label for="dataset-select">Or select an existing dataset:</label>
+      <select id="dataset-select" onchange="selectDataset(this.value)">
+        <option value="">— choose —</option>
+      </select>
+    </div>
   </div>
 
-  <!-- Query Panel -->
-  <div class="card" id="query-section">
-    <h2>2. Ask a question</h2>
+  <!-- Step 2: Upload CSVs -->
+  <div class="card hidden" id="upload-card">
+    <h2><span class="step-num">2</span>Upload CSV files</h2>
+    <p style="margin:0 0 12px;font-size:0.88rem;color:#555;">
+      Dataset: <strong id="dataset-label"></strong>
+    </p>
+    <div class="row">
+      <input type="file" id="csv-file" accept=".csv" multiple />
+      <button onclick="uploadFiles(event)">Upload</button>
+    </div>
+    <div class="status" id="upload-status"></div>
+    <div class="file-list" id="file-list"></div>
+  </div>
+
+  <!-- Step 3: Query -->
+  <div class="card hidden" id="query-card">
+    <h2><span class="step-num">3</span>Ask a question across all files</h2>
     <label for="question-input">Your question</label>
-    <textarea id="question-input" placeholder="e.g. What is the average value in column 'price'?"></textarea>
-    <button id="query-btn" onclick="askQuestion()">Ask</button>
+    <textarea id="question-input" placeholder="e.g. Which month had the highest total revenue across all files?"></textarea>
+    <button id="query-btn" onclick="askQuestion()">Ask Gemini</button>
     <div class="status" id="query-status"></div>
-    <div class="answer-box" id="answer-box" style="display:none"></div>
+    <div class="answer-box hidden" id="answer-box"></div>
+    <div class="token-info hidden" id="token-info"></div>
   </div>
 </div>
 
 <script>
-  let currentUploadId = null;
+  let currentDatasetId = null;
+  window._datasets = [];
 
-  async function uploadFile() {
-    const fileInput = document.getElementById('csv-file');
-    const statusEl = document.getElementById('upload-status');
-    const colEl = document.getElementById('column-list');
-    const btn = document.getElementById('upload-btn');
+  window.addEventListener('DOMContentLoaded', loadDatasets);
 
-    if (!fileInput.files.length) {
-      statusEl.textContent = 'Please select a CSV file first.';
+  async function loadDatasets() {
+    try {
+      const res = await fetch('/api/datasets');
+      const json = await res.json();
+      if (!res.ok || !json.data.length) return;
+      window._datasets = json.data;
+      const sel = document.getElementById('dataset-select');
+      json.data.forEach(ds => {
+        const opt = document.createElement('option');
+        opt.value = ds.id;
+        opt.textContent = `${ds.name} (${ds.uploads.length} file${ds.uploads.length !== 1 ? 's' : ''})`;
+        sel.appendChild(opt);
+      });
+      document.getElementById('existing-wrap').classList.remove('hidden');
+    } catch (_) {}
+  }
+
+  function selectDataset(id) {
+    if (!id) return;
+    const ds = window._datasets.find(d => d.id === id);
+    if (ds) activateDataset(ds.id, ds.name, ds.uploads);
+  }
+
+  async function createDataset() {
+    const name = document.getElementById('dataset-name').value.trim();
+    const statusEl = document.getElementById('dataset-status');
+    if (!name) { statusEl.innerHTML = '<span class="error">Enter a dataset name.</span>'; return; }
+
+    const res = await fetch('/api/datasets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      statusEl.innerHTML = `<span class="error">${json.detail?.message || 'Error'}</span>`;
       return;
     }
+    statusEl.innerHTML = `<span class="success">✓ Dataset "${json.data.name}" created.</span>`;
+    activateDataset(json.data.id, json.data.name, []);
+  }
 
-    btn.disabled = true;
-    statusEl.textContent = 'Uploading…';
-    colEl.innerHTML = '';
+  function activateDataset(id, name, existingUploads) {
+    currentDatasetId = id;
+    document.getElementById('dataset-label').textContent = name;
+    document.getElementById('upload-card').classList.remove('hidden');
+    document.getElementById('query-card').classList.remove('hidden');
 
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    try {
-      const res = await fetch('/api/uploads', { method: 'POST', body: formData });
-      const json = await res.json();
-      if (!res.ok) {
-        statusEl.innerHTML = `<span class="error">Error: ${json.detail?.message || res.statusText}</span>`;
-        return;
-      }
-      const data = json.data;
-      currentUploadId = data.id;
-      statusEl.textContent = `✓ Uploaded "${data.original_filename}" — ${data.row_count} rows`;
-      colEl.innerHTML = '<strong>Columns:</strong> ' + data.columns.map(c => `<span>${c}</span>`).join('');
-      document.getElementById('query-section').style.display = 'block';
-    } catch (err) {
-      statusEl.innerHTML = `<span class="error">Upload failed: ${err.message}</span>`;
-    } finally {
-      btn.disabled = false;
+    const fileList = document.getElementById('file-list');
+    fileList.innerHTML = '';
+    existingUploads.forEach(renderFileItem);
+    if (existingUploads.length) {
+      document.getElementById('upload-status').textContent =
+        `${existingUploads.length} file(s) already in this dataset.`;
     }
   }
 
-  async function askQuestion() {
-    const questionEl = document.getElementById('question-input');
-    const statusEl = document.getElementById('query-status');
-    const answerEl = document.getElementById('answer-box');
-    const btn = document.getElementById('query-btn');
-
-    const question = questionEl.value.trim();
-    if (!question) { statusEl.textContent = 'Please enter a question.'; return; }
+  async function uploadFiles(event) {
+    const input = document.getElementById('csv-file');
+    const statusEl = document.getElementById('upload-status');
+    const btn = event.target;
+    if (!input.files.length) { statusEl.textContent = 'Select at least one CSV file.'; return; }
 
     btn.disabled = true;
-    statusEl.textContent = 'Thinking…';
-    answerEl.style.display = 'none';
-    answerEl.textContent = '';
+    statusEl.textContent = `Uploading ${input.files.length} file(s)…`;
+
+    let ok = 0;
+    for (const file of input.files) {
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await fetch(`/api/datasets/${currentDatasetId}/uploads`, { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!res.ok) {
+          statusEl.innerHTML += `<br><span class="error">${file.name}: ${json.detail?.message}</span>`;
+        } else {
+          renderFileItem(json.data.upload);
+          ok++;
+        }
+      } catch (err) {
+        statusEl.innerHTML += `<br><span class="error">${file.name}: ${err.message}</span>`;
+      }
+    }
+    statusEl.innerHTML = `<span class="success">✓ ${ok}/${input.files.length} file(s) uploaded.</span>`;
+    input.value = '';
+    btn.disabled = false;
+  }
+
+  function renderFileItem(upload) {
+    const div = document.createElement('div');
+    div.className = 'file-item';
+    div.innerHTML = `<strong>${upload.original_filename}</strong>
+      <span style="color:#6b7280;margin-left:8px;">${upload.row_count.toLocaleString()} rows</span>
+      <div style="margin-top:4px;">${upload.columns.map(c => `<span class="tag">${c}</span>`).join('')}</div>`;
+    document.getElementById('file-list').appendChild(div);
+  }
+
+  async function askQuestion() {
+    const question = document.getElementById('question-input').value.trim();
+    const statusEl = document.getElementById('query-status');
+    const answerEl = document.getElementById('answer-box');
+    const tokenEl = document.getElementById('token-info');
+    const btn = document.getElementById('query-btn');
+
+    if (!question) { statusEl.textContent = 'Enter a question first.'; return; }
+    btn.disabled = true;
+    statusEl.textContent = 'Asking Gemini…';
+    answerEl.classList.add('hidden');
+    tokenEl.classList.add('hidden');
 
     try {
-      const res = await fetch('/api/queries', {
+      const res = await fetch(`/api/datasets/${currentDatasetId}/queries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upload_id: currentUploadId, question }),
+        body: JSON.stringify({ question }),
       });
       const json = await res.json();
       if (!res.ok) {
-        statusEl.innerHTML = `<span class="error">Error: ${json.detail?.message || res.statusText}</span>`;
+        statusEl.innerHTML = `<span class="error">${json.detail?.message || res.statusText}</span>`;
         return;
       }
+      const data = json.data;
       statusEl.textContent = '';
-      answerEl.textContent = json.data.answer;
-      answerEl.style.display = 'block';
+      answerEl.textContent = data.answer;
+      answerEl.classList.remove('hidden');
+
+      const t = data.tokens || {};
+      const costStr = (data.cost_usd > 0)
+        ? `$${data.cost_usd.toFixed(6)}`
+        : '(stub — no cost)';
+      tokenEl.innerHTML = `
+        <span>📥 Input: <strong>${(t.input || 0).toLocaleString()} tokens</strong></span>
+        <span>📤 Output: <strong>${(t.output || 0).toLocaleString()} tokens</strong></span>
+        <span>∑ Total: <strong>${(t.total || 0).toLocaleString()} tokens</strong></span>
+        <span>💰 Est. cost: <strong>${costStr}</strong></span>`;
+      tokenEl.classList.remove('hidden');
     } catch (err) {
       statusEl.innerHTML = `<span class="error">Request failed: ${err.message}</span>`;
     } finally {

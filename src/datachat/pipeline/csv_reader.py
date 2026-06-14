@@ -14,14 +14,14 @@ def read_csv_metadata(file_path: str) -> tuple[int, list[str]]:
     return len(df), list(df.columns)
 
 
-def build_query_context(file_path: str) -> str:
+def build_query_context(file_path: str, max_rows: int = MAX_SAMPLE_ROWS) -> str:
     """Build a context string with column names and sample rows for the LLM prompt."""
     df = pd.read_csv(file_path)
     columns = list(df.columns)
-    sample = df.head(MAX_SAMPLE_ROWS).to_csv(index=False)
+    sample = df.head(max_rows).to_csv(index=False)
     return (
         f"Columns: {', '.join(columns)}\n\n"
-        f"Sample data (up to {MAX_SAMPLE_ROWS} rows):\n{sample}"
+        f"Sample data (up to {max_rows} rows):\n{sample}"
     )
 
 
