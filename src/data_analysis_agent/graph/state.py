@@ -11,4 +11,9 @@ class AgentState(TypedDict, total=False):
     row_count: int
     data_sample: str
     answer: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float | None
+    api_request_count: int
     error: str | None

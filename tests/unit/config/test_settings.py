@@ -4,7 +4,7 @@ from data_analysis_agent.config.settings import get_settings
 
 def test_defaults(monkeypatch):
     monkeypatch.setenv("DATAANALYSIS_DATABASE_URL", "sqlite:///test.db")
-    monkeypatch.delenv("DATAANALYSIS_OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("DATAANALYSIS_OPENROUTER_API_KEY", "")
     s = get_settings()
     assert s.database_url == "sqlite:///test.db"
     assert s.resolved_llm_provider == "stub"

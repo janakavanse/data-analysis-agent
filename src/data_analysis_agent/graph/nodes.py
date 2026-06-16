@@ -31,8 +31,24 @@ def analyze(state: AgentState) -> AgentState:
             "Please answer the user's question based on the data above. "
             "Be concise and accurate."
         )
-        answer = get_llm_client().complete(prompt)
-        return {**state, "answer": answer}
+        result = get_llm_client().complete(prompt)
+        prior_requests = state.get("api_request_count", 0)
+        log.info(
+            "analyze.done",
+            run_id=state.get("run_id"),
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            estimated_cost_usd=result.estimated_cost_usd,
+        )
+        return {
+            **state,
+            "answer": result.text,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "total_tokens": result.total_tokens,
+            "estimated_cost_usd": result.estimated_cost_usd,
+            "api_request_count": prior_requests + 1,
+        }
     except Exception as exc:
         log.error("analyze.failed", run_id=state.get("run_id"), error=str(exc))
         return {**state, "error": f"LLM analysis failed: {exc}"}
@@ -47,6 +63,11 @@ def finalize(state: AgentState) -> AgentState:
             if qr:
                 qr.answer = state.get("answer", "")
                 qr.status = "completed"
+                qr.input_tokens = state.get("input_tokens", 0)
+                qr.output_tokens = state.get("output_tokens", 0)
+                qr.total_tokens = state.get("total_tokens", 0)
+                qr.estimated_cost_usd = state.get("estimated_cost_usd")
+                qr.api_request_count = state.get("api_request_count", 1)
             run = session.get(AgentRunRow, state["run_id"])
             if run:
                 run.status = "completed"

@@ -10,11 +10,26 @@
   {% if rec.answer %}
   <pre style="margin-top:0.5rem;">{{ rec.answer }}</pre>
   {% elif rec.status == "failed" %}
-  <p style="color:#c00;">Error: {{ rec.error_message }}</p>
+  <p style="color:#c00;margin-top:0.4rem;">Error: {{ rec.error_message }}</p>
   {% else %}
-  <p style="color:#999;">Pending…</p>
+  <p style="color:#999;margin-top:0.4rem;">Pending…</p>
   {% endif %}
-  <p class="meta" style="margin-top:0.5rem;">{{ rec.created_at }}</p>
+
+  <div style="display:flex;gap:1.5rem;margin-top:0.65rem;font-size:0.82rem;color:#666;flex-wrap:wrap;">
+    <span>{{ rec.created_at.strftime('%Y-%m-%d %H:%M') if rec.created_at else '' }}</span>
+    {% if rec.total_tokens is not none %}
+    <span>&#128196; {{ rec.total_tokens }} tokens
+      ({{ rec.input_tokens }}&#8599; / {{ rec.output_tokens }}&#8600;)</span>
+    <span>&#128205; {{ rec.api_request_count | default(1) }} request{{ 's' if rec.api_request_count != 1 else '' }}</span>
+    {% if rec.estimated_cost_usd is not none %}
+    {% if rec.estimated_cost_usd == 0.0 %}
+    <span>&#128184; $0.000000 (stub)</span>
+    {% else %}
+    <span>&#128184; ~${{ "%.6f" | format(rec.estimated_cost_usd) }}</span>
+    {% endif %}
+    {% endif %}
+    {% endif %}
+  </div>
 </div>
 {% endfor %}
 {% else %}

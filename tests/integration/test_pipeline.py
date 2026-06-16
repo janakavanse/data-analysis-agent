@@ -13,7 +13,7 @@ from data_analysis_agent.db.models import Base, DatasetRow, QueryRecordRow, Agen
 @pytest.fixture(autouse=True)
 def _stub_env(monkeypatch):
     monkeypatch.setenv("DATAANALYSIS_DATABASE_URL", "sqlite:///stub_test.db")
-    monkeypatch.delenv("DATAANALYSIS_OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("DATAANALYSIS_OPENROUTER_API_KEY", "")
 
 
 @pytest.fixture(autouse=True)

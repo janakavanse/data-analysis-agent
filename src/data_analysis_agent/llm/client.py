@@ -1,11 +1,12 @@
 from data_analysis_agent.llm.providers.base import LLMProvider
+from data_analysis_agent.llm.types import LLMResult
 
 
 class LLMClient:
     def __init__(self, provider: LLMProvider) -> None:
         self._provider = provider
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str) -> LLMResult:
         return self._provider.complete(prompt)
 
 
