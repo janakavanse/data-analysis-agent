@@ -1,4 +1,4 @@
-"""Golden-path UI smoke test: connect CSV data source, create session, ask question, see answer inline."""
+"""Golden-path UI smoke test: connect CSV, create session with it, ask question, see answer inline."""
 import csv
 import io
 
@@ -60,6 +60,7 @@ def test_home_page_loads(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "Data Sources" in r.text
+    assert "Sessions" in r.text
 
 
 def test_stub_banner_visible_on_home(client):
@@ -67,7 +68,7 @@ def test_stub_banner_visible_on_home(client):
     assert "Stub mode" in r.text
 
 
-def test_upload_csv_creates_datasource(client):
+def test_upload_csv_returns_to_home(client):
     csv_bytes = _make_csv()
     r = client.post(
         "/datasources/upload",
@@ -75,13 +76,11 @@ def test_upload_csv_creates_datasource(client):
         follow_redirects=True,
     )
     assert r.status_code == 200
-    # Landed on datasource detail page
     assert "sales.csv" in r.text
-    assert "Sessions" in r.text
 
 
 def test_golden_path_end_to_end(client):
-    # 1. Upload CSV → DataSource created
+    # 1. Upload CSV
     csv_bytes = _make_csv()
     r1 = client.post(
         "/datasources/upload",
@@ -89,29 +88,31 @@ def test_golden_path_end_to_end(client):
         follow_redirects=True,
     )
     assert r1.status_code == 200
-    # Extract datasource_id from URL
-    ds_url = str(r1.url)
-    datasource_id = ds_url.rstrip("/").split("/")[-1]
 
-    # 2. Create session
+    # Extract datasource_id from the home page response (it's in the checkbox values)
+    import re
+    ds_id_match = re.search(r'name="data_source_ids" value="([^"]+)"', r1.text)
+    assert ds_id_match, "data_source_ids checkbox not found in home page"
+    datasource_id = ds_id_match.group(1)
+
+    # 2. Create session with that data source
     r2 = client.post(
-        f"/datasources/{datasource_id}/sessions",
+        "/sessions",
+        data={"data_source_ids": datasource_id},
         follow_redirects=True,
     )
     assert r2.status_code == 200
     session_url = str(r2.url)
     session_id = session_url.rstrip("/").split("/")[-1].split("?")[0]
 
-    # 3. Ask a question — should redirect to session page with ?new=
+    # 3. Ask a question
     r3 = client.post(
         f"/sessions/{session_id}/query",
         data={"question": "What is the total revenue?"},
         follow_redirects=True,
     )
     assert r3.status_code == 200
-    # Answer should contain stub output
     assert "stub" in r3.text.lower() or "analysis" in r3.text.lower()
-    # Question should appear inline
     assert "total revenue" in r3.text.lower()
 
 

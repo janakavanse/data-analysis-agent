@@ -5,9 +5,7 @@ class AgentState(TypedDict, total=False):
     run_id: str
     query_record_id: str
     session_id: str
-    data_source_id: str
     question: str
-    csv_path: str
 
     # Tool registry (loaded from DB by load_data)
     tools: list[dict]  # [{"name", "type", "capabilities": [{"name", "description", "parameter_schema"}]}]

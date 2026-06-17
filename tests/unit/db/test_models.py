@@ -3,7 +3,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from data_analysis_agent.db.models import (
-    Base, DataSourceRow, ToolRow, ToolCapabilityRow, SessionRow, QueryRecordRow, AgentRunRow,
+    Base, DataSourceRow, ToolRow, ToolCapabilityRow,
+    SessionRow, SessionDataSourceRow, QueryRecordRow, AgentRunRow,
 )
 
 
@@ -65,8 +66,11 @@ def test_create_session_and_query_record(db):
     db.add(ds)
     db.flush()
 
-    sess = SessionRow(data_source_id=ds.id, name="Test session")
+    sess = SessionRow(name="Test session")
     db.add(sess)
+    db.flush()
+
+    db.add(SessionDataSourceRow(session_id=sess.id, data_source_id=ds.id))
     db.flush()
 
     qr = QueryRecordRow(session_id=sess.id, question="What is the average?")
@@ -76,12 +80,32 @@ def test_create_session_and_query_record(db):
     assert qr.status == "pending"
 
 
+def test_session_many_datasources(db):
+    ds1 = DataSourceRow(name="sales.csv", type="csv")
+    ds2 = DataSourceRow(name="customers.csv", type="csv")
+    db.add_all([ds1, ds2])
+    db.flush()
+
+    sess = SessionRow(name="Multi-source session")
+    db.add(sess)
+    db.flush()
+
+    db.add(SessionDataSourceRow(session_id=sess.id, data_source_id=ds1.id))
+    db.add(SessionDataSourceRow(session_id=sess.id, data_source_id=ds2.id))
+    db.commit()
+
+    links = db.query(SessionDataSourceRow).filter_by(session_id=sess.id).all()
+    assert len(links) == 2
+
+
 def test_create_agent_run(db):
     ds = DataSourceRow(name="data.csv", type="csv")
     db.add(ds)
     db.flush()
-    sess = SessionRow(data_source_id=ds.id)
+    sess = SessionRow()
     db.add(sess)
+    db.flush()
+    db.add(SessionDataSourceRow(session_id=sess.id, data_source_id=ds.id))
     db.flush()
     qr = QueryRecordRow(session_id=sess.id, question="Q")
     db.add(qr)

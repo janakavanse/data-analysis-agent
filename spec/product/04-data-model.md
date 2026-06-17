@@ -55,15 +55,23 @@ A single callable action that a Tool exposes. The LLM selects a capability by na
 
 ### Entity: Session
 
-A named conversation session on a DataSource. A user can have many sessions per DataSource.
+A named conversation session. A session may span **multiple DataSources** — the agent has access to all tools from all attached data sources simultaneously.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | id | TEXT (UUID) | yes | Primary key |
-| data_source_id | TEXT (FK → DataSource.id) | yes | The data source being queried |
 | name | TEXT | no | Optional user-given name; defaults to "Session YYYY-MM-DD HH:MM" |
 | created_at | TIMESTAMP | yes | Session start time |
 | updated_at | TIMESTAMP | yes | Last activity time |
+
+### Entity: SessionDataSource (join table)
+
+Links Sessions to DataSources (many-to-many).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| session_id | TEXT (FK → Session.id) | yes | Composite PK |
+| data_source_id | TEXT (FK → DataSource.id) | yes | Composite PK |
 
 ---
 
@@ -112,7 +120,7 @@ Internal record tracking each LangGraph pipeline invocation. One per QueryRecord
 DataSource (1) ──< Tool (N)
 Tool (1) ──< ToolCapability (N)
 
-DataSource (1) ──< Session (N)
+DataSource (M) ──< SessionDataSource >── (N) Session
 Session (1) ──< QueryRecord (N)
 QueryRecord (1) ──< AgentRun (N)
 ```

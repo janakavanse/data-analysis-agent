@@ -84,7 +84,6 @@ class SessionRow(Base):
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
-    data_source_id: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_now
@@ -92,6 +91,13 @@ class SessionRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_now, onupdate=_now
     )
+
+
+class SessionDataSourceRow(Base):
+    __tablename__ = "session_data_sources"
+
+    session_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    data_source_id: Mapped[str] = mapped_column(Text, primary_key=True)
 
 
 class QueryRecordRow(Base):

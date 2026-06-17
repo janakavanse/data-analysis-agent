@@ -56,18 +56,19 @@ REST (FastAPI) + Server-rendered HTML (Jinja2). Browser UI is the primary surfac
 
 ---
 
-### `POST /datasources/{datasource_id}/sessions`
+### `POST /sessions`
 
-**Purpose:** Create a new Session for a DataSource.
+**Purpose:** Create a new Session spanning one or more DataSources.
 
-**Request:** `application/x-www-form-urlencoded` — optional field `name`
+**Request:** `application/x-www-form-urlencoded` — fields: `name` (optional), `data_source_ids` (one or more values, at least one required)
 
 **Response:** Redirect to `GET /sessions/{session_id}`
 
 **Error cases:**
 | Status | Condition |
 |--------|-----------|
-| 404 | DataSource not found |
+| 400 | No data source selected |
+| 404 | Any referenced DataSource not found |
 
 ---
 

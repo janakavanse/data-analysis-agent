@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 import data_analysis_agent.db.session as session_module
 from data_analysis_agent.db.models import (
-    Base, DataSourceRow, ToolRow, ToolCapabilityRow, SessionRow, QueryRecordRow, AgentRunRow,
+    Base, DataSourceRow, SessionDataSourceRow, ToolRow, ToolCapabilityRow,
+    SessionRow, QueryRecordRow, AgentRunRow,
 )
 
 
@@ -49,9 +50,8 @@ def csv_file(tmp_path):
 
 
 @pytest.fixture
-def datasource_session_and_query(csv_file):
+def session_and_query(csv_file):
     with session_module.create_db_session() as db:
-        # Create DataSource + Tool + ToolCapability
         ds = DataSourceRow(name="sample.csv", type="csv", file_path=csv_file)
         db.add(ds)
         db.flush()
@@ -61,7 +61,7 @@ def datasource_session_and_query(csv_file):
             name="csv_query",
             type="csv_query",
             description="Execute SQL SELECT queries against the dataset.",
-            config_json=json.dumps({"table_name": "data"}),
+            config_json=json.dumps({"table_name": "sample"}),
         )
         db.add(tool)
         db.flush()
@@ -69,36 +69,37 @@ def datasource_session_and_query(csv_file):
         cap = ToolCapabilityRow(
             tool_id=tool.id,
             name="run_query",
-            description="Execute a SQL SELECT statement. Table is always named data.",
+            description="Execute a SQL SELECT statement. Table name is 'sample'.",
             parameter_schema_json=json.dumps({"query": {"type": "string"}}),
         )
         db.add(cap)
         db.flush()
 
-        sess = SessionRow(data_source_id=ds.id, name="Test session")
+        sess = SessionRow(name="Test session")
         db.add(sess)
+        db.flush()
+
+        db.add(SessionDataSourceRow(session_id=sess.id, data_source_id=ds.id))
         db.flush()
 
         qr = QueryRecordRow(session_id=sess.id, question="What is the total sales?")
         db.add(qr)
         db.flush()
 
-        return ds.id, sess.id, qr.id, csv_file
+        return sess.id, qr.id
 
 
-def test_pipeline_runs_end_to_end(datasource_session_and_query):
+def test_pipeline_runs_end_to_end(session_and_query):
     from data_analysis_agent.graph.runner import run_pipeline
 
     import data_analysis_agent.llm.client as llm_module
     llm_module._client = None
 
-    ds_id, session_id, query_record_id, csv_path = datasource_session_and_query
+    session_id, query_record_id = session_and_query
     final_state = run_pipeline(
         query_record_id=query_record_id,
         session_id=session_id,
-        data_source_id=ds_id,
         question="What is the total sales?",
-        csv_path=csv_path,
     )
 
     assert final_state.get("error") is None, f"Pipeline error: {final_state.get('error')}"
@@ -109,7 +110,6 @@ def test_pipeline_runs_end_to_end(datasource_session_and_query):
         assert qr.status == "completed"
         assert qr.answer is not None
         assert len(qr.answer) > 0
-        # Stub runs 2 iterations: one SQL query + one FINAL ANSWER
         assert qr.iteration_count == 1
 
         runs = s.query(AgentRunRow).filter_by(query_record_id=query_record_id).all()

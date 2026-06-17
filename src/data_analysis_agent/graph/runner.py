@@ -11,9 +11,7 @@ log = structlog.get_logger()
 def run_pipeline(
     query_record_id: str,
     session_id: str,
-    data_source_id: str,
     question: str,
-    csv_path: str,
 ) -> AgentState:
     init_db()
 
@@ -27,9 +25,7 @@ def run_pipeline(
         "run_id": run_id,
         "query_record_id": query_record_id,
         "session_id": session_id,
-        "data_source_id": data_source_id,
         "question": question,
-        "csv_path": csv_path,
         "error": None,
     }
 

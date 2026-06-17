@@ -1,101 +1,234 @@
 {% extends "base.html" %}
-{% block title %}Data Sources — DataAnalyst AI{% endblock %}
+{% block title %}DataAnalyst AI{% endblock %}
 {% block content %}
 
-<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.75rem;">
+<style>
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.session-form {
+  background: var(--brand-light); border: 1.5px solid var(--brand);
+  border-radius: var(--radius); padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+.cb-list { display: flex; flex-direction: column; gap: .5rem; margin: .75rem 0 1rem; }
+.cb-item {
+  display: flex; align-items: center; gap: .55rem;
+  font-size: .9rem; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: .45rem .75rem;
+  transition: border-color .15s;
+}
+.cb-item:has(input:checked) { border-color: var(--brand); background: var(--brand-light); }
+.cb-item input[type=checkbox] { accent-color: var(--brand); width: 15px; height: 15px; }
+.source-chip {
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: var(--brand-light); color: var(--brand-dark);
+  font-size: .75rem; font-weight: 500;
+  padding: .15rem .55rem; border-radius: 999px;
+}
+.empty-state {
+  text-align: center; padding: 2rem 1rem; color: var(--muted);
+  border: 2px dashed var(--border); border-radius: var(--radius);
+}
+</style>
+
+<h1 style="margin-bottom:1.75rem;">DataAnalyst AI</h1>
+
+<div class="two-col">
+
+  <!-- ── LEFT: Data Sources ──────────────────────────────── -->
   <div>
-    <h1>Data Sources</h1>
-    <p class="muted" style="margin-top:.4rem;">Connect a CSV file to start asking questions about your data.</p>
+    <div class="section-header">
+      <h2>Data Sources</h2>
+    </div>
+
+    <!-- Upload form -->
+    <div class="card card-sm" style="margin-bottom:1rem;">
+      <form method="post" action="/datasources/upload" enctype="multipart/form-data">
+        <label class="upload-zone" style="padding:1.25rem;margin-bottom:.75rem;">
+          <input type="file" name="file" accept=".csv" id="csv-input">
+          <div class="upload-icon" style="font-size:1.5rem;">📊</div>
+          <div style="font-weight:600;font-size:.9rem;">Click to select a CSV</div>
+          <div class="selected-name" style="font-size:.82rem;"></div>
+        </label>
+        <div id="upload-err" style="color:var(--err);font-size:.82rem;margin-bottom:.5rem;display:none;"></div>
+        <button class="btn" type="submit" onclick="return validateUpload()" style="width:100%;">
+          Upload &amp; Connect
+        </button>
+      </form>
+    </div>
+
+    <!-- Data source cards -->
+    {% if sources %}
+    {% for src in sources %}
+    <div class="card card-sm" style="margin-bottom:.75rem;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;">
+        <div style="min-width:0;">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem;flex-wrap:wrap;">
+            <span style="font-weight:700;font-size:.95rem;">{{ src.name }}</span>
+            <span class="tag" style="font-size:.7rem;">{{ src.type | upper }}</span>
+          </div>
+          <div class="muted" style="font-size:.82rem;">
+            {% if src.row_count %}{{ "{:,}".format(src.row_count) }} rows{% endif %}
+            {% if src.column_names %}· {{ src.column_names|length }} cols{% endif %}
+          </div>
+          {% if src.column_names %}
+          <div class="tags" style="margin-top:.4rem;">
+            {% for col in src.column_names[:4] %}
+            <span class="tag" style="font-size:.72rem;">{{ col }}</span>
+            {% endfor %}
+            {% if src.column_names|length > 4 %}
+            <span class="tag" style="background:#f1f5f9;color:var(--muted);font-size:.72rem;">+{{ src.column_names|length - 4 }}</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+        <div style="flex-shrink:0;">
+          <div id="dz-{{ src.id }}">
+            <button class="btn btn-ghost" style="color:var(--err);border-color:#fca5a5;font-size:.82rem;padding:.35rem .75rem;"
+                    onclick="showDel('{{ src.id }}')">Delete</button>
+          </div>
+          <div id="dc-{{ src.id }}" style="display:none;font-size:.82rem;">
+            <span style="color:var(--err);">Delete?</span>
+            <form method="post" action="/datasources/{{ src.id }}/delete" style="display:inline;">
+              <button class="btn" style="background:var(--err);padding:.25rem .6rem;font-size:.78rem;margin-left:.25rem;">Yes</button>
+            </form>
+            <button onclick="hideDel('{{ src.id }}')"
+                    style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:.78rem;margin-left:.2rem;">No</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">
+      <div style="font-size:1.75rem;margin-bottom:.5rem;">📂</div>
+      <p style="font-size:.875rem;">No data sources yet.<br>Upload a CSV above.</p>
+    </div>
+    {% endif %}
   </div>
-</div>
 
-<!-- Upload card -->
-<div class="card" style="margin-bottom:2rem;">
-  <h2 style="margin-bottom:1.25rem;">Connect a Data Source</h2>
-  <form method="post" action="/datasources/upload" enctype="multipart/form-data" id="upload-form">
-    <label class="upload-zone" id="upload-zone">
-      <input type="file" name="file" accept=".csv" id="csv-file-input">
-      <div class="upload-icon">📊</div>
-      <div style="font-weight:600;">Click to select a CSV file</div>
-      <div class="hint">Supported: .csv — max 100 MB</div>
-      <div class="selected-name"></div>
-    </label>
-    <div id="upload-err" style="color:var(--err);font-size:.875rem;margin-bottom:.75rem;display:none;"></div>
-    <button class="btn" type="submit" onclick="return validateUpload()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-      Upload &amp; Connect
-    </button>
-  </form>
-</div>
-
-<!-- Existing data sources -->
-{% if sources %}
-<h2 style="margin-bottom:1rem;">Your Data Sources</h2>
-{% for src in sources %}
-<div class="card card-sm" id="src-{{ src.id }}">
-  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem;">
-    <div style="flex:1; min-width:0;">
-      <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.4rem;">
-        <span style="font-weight:700; font-size:1rem;">{{ src.name }}</span>
-        <span class="tag" style="font-size:.72rem;">{{ src.type | upper }}</span>
-      </div>
-      <div class="muted" style="margin-bottom:.7rem;">
-        {% if src.row_count %}{{ "{:,}".format(src.row_count) }} rows{% endif %}
-        {% if src.column_names %}· {{ src.column_names|length }} columns{% endif %}
-        {% if last_activity[src.id] %}
-          · Last activity {{ last_activity[src.id].strftime('%b %d, %Y') }}
-        {% endif %}
-        · {{ session_counts[src.id] }} session{% if session_counts[src.id] != 1 %}s{% endif %}
-      </div>
-      {% if src.column_names %}
-      <div class="tags">
-        {% for col in src.column_names[:6] %}
-        <span class="tag">{{ col }}</span>
-        {% endfor %}
-        {% if src.column_names|length > 6 %}
-        <span class="tag" style="background:#f1f5f9;color:var(--muted);">+{{ src.column_names|length - 6 }} more</span>
-        {% endif %}
-      </div>
+  <!-- ── RIGHT: Sessions ─────────────────────────────────── -->
+  <div>
+    <div class="section-header">
+      <h2>Sessions</h2>
+      {% if sources %}
+      <button class="btn" onclick="toggleNewSession()" id="new-sess-btn">＋ New Session</button>
       {% endif %}
     </div>
-    <div style="display:flex; flex-direction:column; gap:.5rem; flex-shrink:0;">
-      <form method="post" action="/datasources/{{ src.id }}/sessions">
-        <button class="btn" type="submit" style="width:100%;white-space:nowrap;">＋ New Session</button>
+
+    <!-- New session form (hidden by default) -->
+    <div class="session-form" id="new-session-form" style="display:none;">
+      <form method="post" action="/sessions">
+        <div class="field">
+          <label style="font-size:.85rem;font-weight:600;">Session name <span style="color:var(--muted);font-weight:400;">(optional)</span></label>
+          <input type="text" name="name" placeholder="e.g. Q2 Sales Analysis">
+        </div>
+        <div class="label" style="margin-bottom:.4rem;">Select data sources <span style="color:var(--err);">*</span></div>
+        <div class="cb-list">
+          {% for src in sources %}
+          <label class="cb-item">
+            <input type="checkbox" name="data_source_ids" value="{{ src.id }}">
+            <span>{{ src.name }}</span>
+            {% if src.row_count %}<span class="muted" style="font-size:.78rem;margin-left:auto;">{{ "{:,}".format(src.row_count) }} rows</span>{% endif %}
+          </label>
+          {% endfor %}
+        </div>
+        <div id="sess-err" style="color:var(--err);font-size:.82rem;margin-bottom:.5rem;display:none;">
+          Please select at least one data source.
+        </div>
+        <div style="display:flex;gap:.5rem;">
+          <button class="btn" type="submit" onclick="return validateSession()">Create Session</button>
+          <button type="button" class="btn btn-ghost" onclick="toggleNewSession()">Cancel</button>
+        </div>
       </form>
-      <a href="/datasources/{{ src.id }}" class="btn btn-ghost" style="text-align:center;">View Sessions</a>
-      <div id="dz-{{ src.id }}">
-        <button class="btn btn-ghost" style="color:var(--err);border-color:#fca5a5;width:100%;"
-                onclick="showDel('{{ src.id }}')">Delete</button>
-      </div>
-      <div id="dc-{{ src.id }}" style="display:none;text-align:center;">
-        <span style="font-size:.85rem;color:var(--err);">Delete?</span>
-        <form method="post" action="/datasources/{{ src.id }}/delete" style="display:inline;">
-          <button class="btn" style="background:var(--err);padding:.3rem .75rem;font-size:.82rem;margin-left:.3rem;">Yes</button>
-        </form>
-        <button onclick="hideDel('{{ src.id }}')"
-                style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:.82rem;margin-left:.3rem;">No</button>
+    </div>
+
+    {% if not sources %}
+    <div class="empty-state">
+      <div style="font-size:1.75rem;margin-bottom:.5rem;">💬</div>
+      <p style="font-size:.875rem;">Upload a data source first,<br>then create a session.</p>
+    </div>
+    {% elif all_sessions %}
+    {% for sess in all_sessions %}
+    <div class="card card-sm" style="margin-bottom:.75rem;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:.3rem;">{{ sess.name or "Unnamed Session" }}</div>
+          {% if session_sources[sess.id] %}
+          <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.3rem;">
+            {% for src in session_sources[sess.id] %}
+            <span class="source-chip">📊 {{ src.name }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <div class="muted" style="font-size:.8rem;">
+            {{ session_query_counts[sess.id] }} question{% if session_query_counts[sess.id] != 1 %}s{% endif %}
+            · {{ sess.created_at.strftime('%b %d, %Y') }}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.4rem;flex-shrink:0;align-items:flex-end;">
+          <a href="/sessions/{{ sess.id }}" class="btn" style="font-size:.85rem;padding:.4rem .9rem;">Open</a>
+          <div id="sdz-{{ sess.id }}">
+            <button class="btn btn-ghost" style="color:var(--err);border-color:#fca5a5;font-size:.78rem;padding:.3rem .65rem;"
+                    onclick="showSessDel('{{ sess.id }}')">Delete</button>
+          </div>
+          <div id="sdc-{{ sess.id }}" style="display:none;font-size:.82rem;text-align:right;">
+            <span style="color:var(--err);">Delete?</span>
+            <form method="post" action="/sessions/{{ sess.id }}/delete" style="display:inline;">
+              <button class="btn" style="background:var(--err);padding:.25rem .6rem;font-size:.78rem;margin-left:.25rem;">Yes</button>
+            </form>
+            <button onclick="hideSessDel('{{ sess.id }}')"
+                    style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:.78rem;margin-left:.2rem;">No</button>
+          </div>
+        </div>
       </div>
     </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">
+      <div style="font-size:1.75rem;margin-bottom:.5rem;">💬</div>
+      <p style="font-size:.875rem;">No sessions yet.<br>Click "New Session" to start.</p>
+    </div>
+    {% endif %}
   </div>
-</div>
-{% endfor %}
-{% else %}
-<div class="card" style="text-align:center;padding:3rem 1.5rem;color:var(--muted);">
-  <div style="font-size:2.5rem;margin-bottom:.75rem;">📂</div>
-  <p>No data sources yet. Upload a CSV file above to get started.</p>
-</div>
-{% endif %}
+
+</div><!-- .two-col -->
 
 <script>
 function validateUpload() {
-  const input = document.getElementById('csv-file-input');
-  const errEl = document.getElementById('upload-err');
+  const input = document.getElementById('csv-input');
+  const err = document.getElementById('upload-err');
   if (!input.files || !input.files[0]) {
-    errEl.textContent = 'Please select a CSV file first.';
-    errEl.style.display = 'block';
+    err.textContent = 'Please select a CSV file first.';
+    err.style.display = 'block';
     return false;
   }
-  errEl.style.display = 'none';
+  err.style.display = 'none';
+  return true;
+}
+function toggleNewSession() {
+  const form = document.getElementById('new-session-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+function validateSession() {
+  const checked = document.querySelectorAll('input[name="data_source_ids"]:checked');
+  const err = document.getElementById('sess-err');
+  if (checked.length === 0) {
+    err.style.display = 'block';
+    return false;
+  }
+  err.style.display = 'none';
   return true;
 }
 function showDel(id) {
@@ -105,6 +238,14 @@ function showDel(id) {
 function hideDel(id) {
   document.getElementById('dc-'+id).style.display='none';
   document.getElementById('dz-'+id).style.display='block';
+}
+function showSessDel(id) {
+  document.getElementById('sdz-'+id).style.display='none';
+  document.getElementById('sdc-'+id).style.display='block';
+}
+function hideSessDel(id) {
+  document.getElementById('sdc-'+id).style.display='none';
+  document.getElementById('sdz-'+id).style.display='block';
 }
 </script>
 {% endblock %}

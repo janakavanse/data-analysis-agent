@@ -20,29 +20,49 @@ def _cleanup_db(run_id: str) -> None:
             pass
 
 
-def _load_tool_registry(data_source_id: str) -> list[dict]:
+def _load_tool_registry(session_id: str) -> tuple[list[dict], list[dict]]:
+    """Returns (tools_list, data_sources_list) for all data sources in the session."""
     from data_analysis_agent.db.session import create_db_session
-    from data_analysis_agent.db.models import ToolRow, ToolCapabilityRow
+    from data_analysis_agent.db.models import DataSourceRow, SessionDataSourceRow, ToolRow, ToolCapabilityRow
     with create_db_session() as db:
-        tools = db.query(ToolRow).filter(ToolRow.data_source_id == data_source_id).all()
-        result = []
-        for tool in tools:
-            caps = db.query(ToolCapabilityRow).filter(ToolCapabilityRow.tool_id == tool.id).all()
-            result.append({
-                "name": tool.name,
-                "type": tool.type,
-                "description": tool.description,
-                "config": tool.config,
-                "capabilities": [
-                    {
-                        "name": c.name,
-                        "description": c.description,
-                        "parameter_schema": c.parameter_schema,
-                    }
-                    for c in caps
-                ],
-            })
-        return result
+        links = (
+            db.query(SessionDataSourceRow)
+            .filter(SessionDataSourceRow.session_id == session_id)
+            .all()
+        )
+        data_source_ids = [lnk.data_source_id for lnk in links]
+
+        tools_result = []
+        sources_result = []
+        for ds_id in data_source_ids:
+            ds = db.get(DataSourceRow, ds_id)
+            if ds:
+                sources_result.append({
+                    "id": ds.id,
+                    "name": ds.name,
+                    "type": ds.type,
+                    "file_path": ds.file_path,
+                    "column_names": ds.column_names,
+                    "row_count": ds.row_count,
+                })
+            tools = db.query(ToolRow).filter(ToolRow.data_source_id == ds_id).all()
+            for tool in tools:
+                caps = db.query(ToolCapabilityRow).filter(ToolCapabilityRow.tool_id == tool.id).all()
+                tools_result.append({
+                    "name": tool.name,
+                    "type": tool.type,
+                    "description": tool.description,
+                    "config": tool.config,
+                    "capabilities": [
+                        {
+                            "name": c.name,
+                            "description": c.description,
+                            "parameter_schema": c.parameter_schema,
+                        }
+                        for c in caps
+                    ],
+                })
+        return tools_result, sources_result
 
 
 def _build_plan_prompt(state: AgentState) -> str:
@@ -96,25 +116,68 @@ def _build_plan_prompt(state: AgentState) -> str:
     return "\n".join(lines)
 
 
+def _table_name_for(source_name: str) -> str:
+    """Derive a SQL-safe table name from a data source name."""
+    import re
+    name = re.sub(r'[^\w]', '_', source_name.rsplit('.', 1)[0]).lower()
+    name = re.sub(r'_+', '_', name).strip('_') or 'data'
+    if name[0].isdigit():
+        name = 'ds_' + name
+    return name
+
+
 def load_data(state: AgentState) -> AgentState:
     try:
-        # Load tool registry from DB
-        tools = _load_tool_registry(state["data_source_id"])
+        tools, data_sources = _load_tool_registry(state["session_id"])
 
-        df = pd.read_csv(state["csv_path"])
-        column_names = list(df.columns)
-        row_count = len(df)
+        if not data_sources:
+            return {**state, "error": "No data sources attached to this session"}
 
         conn = sqlite3.connect(":memory:")
-        df.to_sql("data", conn, index=False, if_exists="replace")
         _db_cache[state["run_id"]] = conn
 
-        log.info("load_data.done", run_id=state.get("run_id"), rows=row_count, tools=len(tools))
+        all_column_names: list[str] = []
+        total_rows = 0
+
+        # Load each CSV into the shared in-memory SQLite under its own table name
+        updated_tools = []
+        for ds in data_sources:
+            if ds["type"] == "csv" and ds.get("file_path"):
+                table = _table_name_for(ds["name"])
+                df = pd.read_csv(ds["file_path"])
+                df.to_sql(table, conn, index=False, if_exists="replace")
+                all_column_names.extend([f"{table}.{c}" for c in df.columns])
+                total_rows += len(df)
+
+        # Patch tool configs so plan_action prompt uses the right table names per source
+        for tool in tools:
+            if tool["type"] == "csv_query":
+                ds_id = None
+                from data_analysis_agent.db.session import create_db_session
+                from data_analysis_agent.db.models import ToolRow
+                with create_db_session() as db:
+                    tr = db.query(ToolRow).filter(ToolRow.name == tool["name"]).first()
+                    if tr:
+                        ds_id = tr.data_source_id
+                matching_ds = next((d for d in data_sources if d["id"] == ds_id), None)
+                if matching_ds:
+                    table = _table_name_for(matching_ds["name"])
+                    tool = dict(tool)
+                    tool["config"] = {**tool.get("config", {}), "table_name": table}
+                    # Update capability descriptions with the actual table name
+                    tool["capabilities"] = [
+                        {**cap, "description": cap["description"].replace("'data'", f"'{table}'")}
+                        for cap in tool.get("capabilities", [])
+                    ]
+            updated_tools.append(tool)
+
+        log.info("load_data.done", run_id=state.get("run_id"), sources=len(data_sources),
+                 tools=len(updated_tools), total_rows=total_rows)
         return {
             **state,
-            "tools": tools,
-            "column_names": column_names,
-            "row_count": row_count,
+            "tools": updated_tools,
+            "column_names": all_column_names,
+            "row_count": total_rows,
             "action_history": [],
             "iteration_count": 0,
         }

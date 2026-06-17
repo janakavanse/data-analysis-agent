@@ -22,9 +22,10 @@ def test_tool_capability_fields():
 
 
 def test_session_defaults():
-    s = Session(data_source_id="ds1")
+    s = Session(data_source_ids=["ds1", "ds2"])
     assert s.id is not None
     assert s.name is None
+    assert s.data_source_ids == ["ds1", "ds2"]
 
 
 def test_query_record_defaults():

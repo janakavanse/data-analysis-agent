@@ -3,21 +3,21 @@
 {% block content %}
 
 <div class="breadcrumb">
-  <a href="/">Data Sources</a>
-  <span>›</span>
-  <a href="/datasources/{{ ds.id }}">{{ ds.name }}</a>
+  <a href="/">Home</a>
   <span>›</span>
   <span>{{ sess.name }}</span>
 </div>
 
 <!-- Session header -->
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.5rem;gap:1rem;">
   <div>
-    <h1 style="font-size:1.2rem;">{{ sess.name }}</h1>
-    <div class="muted" style="margin-top:.25rem;">
-      {{ ds.name }}
-      {% if ds.row_count %}· {{ "{:,}".format(ds.row_count) }} rows{% endif %}
-      {% if ds.column_names %}· {{ ds.column_names|length }} columns{% endif %}
+    <h1 style="font-size:1.2rem;margin-bottom:.4rem;">{{ sess.name }}</h1>
+    <div style="display:flex;flex-wrap:wrap;gap:.35rem;">
+      {% for ds in data_sources %}
+      <span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--brand-light);color:var(--brand-dark);font-size:.78rem;font-weight:500;padding:.2rem .6rem;border-radius:999px;">
+        📊 {{ ds.name }}{% if ds.row_count %} · {{ "{:,}".format(ds.row_count) }} rows{% endif %}
+      </span>
+      {% endfor %}
     </div>
   </div>
 </div>

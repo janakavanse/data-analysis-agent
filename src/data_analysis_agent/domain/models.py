@@ -38,8 +38,8 @@ class ToolCapability(BaseModel):
 
 class Session(BaseModel):
     id: str = Field(default_factory=_uid)
-    data_source_id: str
     name: str | None = None
+    data_source_ids: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
