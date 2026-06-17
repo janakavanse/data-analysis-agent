@@ -1,42 +1,110 @@
 {% extends "base.html" %}
-{% block title %}DataAnalyst AI — Ask questions about your data{% endblock %}
+{% block title %}Data Sources — DataAnalyst AI{% endblock %}
 {% block content %}
 
-<div style="text-align:center; padding: 2.5rem 0 1.5rem;">
-  <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;background:var(--brand-light);border-radius:16px;margin-bottom:1.25rem;">
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>
-    </svg>
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.75rem;">
+  <div>
+    <h1>Data Sources</h1>
+    <p class="muted" style="margin-top:.4rem;">Connect a CSV file to start asking questions about your data.</p>
   </div>
-  <h1 style="margin-bottom:0.5rem;">Ask questions about your data</h1>
-  <p class="muted" style="max-width:420px;margin:0 auto;">Upload a CSV file and get instant answers in plain English — no SQL or code required.</p>
 </div>
 
-<div class="card" style="max-width:520px;margin:0 auto;">
-  <form action="/upload" method="post" enctype="multipart/form-data" id="upload-form">
-    <label class="upload-zone" for="csv-input">
-      <input type="file" id="csv-input" name="file" accept=".csv" required onchange="this.closest('form').querySelector('.selected-name').style.display='block'; this.closest('form').querySelector('.selected-name').textContent='📎 '+this.files[0].name;">
-      <div class="upload-icon">📂</div>
-      <div style="font-weight:600;font-size:0.95rem;">Click to choose a CSV file</div>
-      <div class="hint">or drag and drop — .csv files only</div>
+<!-- Upload card -->
+<div class="card" style="margin-bottom:2rem;">
+  <h2 style="margin-bottom:1.25rem;">Connect a Data Source</h2>
+  <form method="post" action="/datasources/upload" enctype="multipart/form-data" id="upload-form">
+    <label class="upload-zone" id="upload-zone">
+      <input type="file" name="file" accept=".csv" id="csv-file-input">
+      <div class="upload-icon">📊</div>
+      <div style="font-weight:600;">Click to select a CSV file</div>
+      <div class="hint">Supported: .csv — max 100 MB</div>
       <div class="selected-name"></div>
     </label>
-    <button type="submit" class="btn" style="width:100%;justify-content:center;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Upload &amp; Start Analysing
+    <div id="upload-err" style="color:var(--err);font-size:.875rem;margin-bottom:.75rem;display:none;"></div>
+    <button class="btn" type="submit" onclick="return validateUpload()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+      Upload &amp; Connect
     </button>
   </form>
 </div>
 
-<div style="display:flex;justify-content:center;gap:2rem;margin-top:2.5rem;flex-wrap:wrap;">
-  {% for feat in [("💬", "Natural language Q&A", "Ask anything — totals, averages, comparisons"),
-                  ("⚡", "Instant answers", "Powered by Gemini via OpenRouter"),
-                  ("📋", "Query history", "Every question and answer saved")] %}
-  <div style="text-align:center;max-width:160px;">
-    <div style="font-size:1.5rem;margin-bottom:0.35rem;">{{ feat[0] }}</div>
-    <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.2rem;">{{ feat[1] }}</div>
-    <div class="muted" style="font-size:0.8rem;">{{ feat[2] }}</div>
+<!-- Existing data sources -->
+{% if sources %}
+<h2 style="margin-bottom:1rem;">Your Data Sources</h2>
+{% for src in sources %}
+<div class="card card-sm" id="src-{{ src.id }}">
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:1rem;">
+    <div style="flex:1; min-width:0;">
+      <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.4rem;">
+        <span style="font-weight:700; font-size:1rem;">{{ src.name }}</span>
+        <span class="tag" style="font-size:.72rem;">{{ src.type | upper }}</span>
+      </div>
+      <div class="muted" style="margin-bottom:.7rem;">
+        {% if src.row_count %}{{ "{:,}".format(src.row_count) }} rows{% endif %}
+        {% if src.column_names %}· {{ src.column_names|length }} columns{% endif %}
+        {% if last_activity[src.id] %}
+          · Last activity {{ last_activity[src.id].strftime('%b %d, %Y') }}
+        {% endif %}
+        · {{ session_counts[src.id] }} session{% if session_counts[src.id] != 1 %}s{% endif %}
+      </div>
+      {% if src.column_names %}
+      <div class="tags">
+        {% for col in src.column_names[:6] %}
+        <span class="tag">{{ col }}</span>
+        {% endfor %}
+        {% if src.column_names|length > 6 %}
+        <span class="tag" style="background:#f1f5f9;color:var(--muted);">+{{ src.column_names|length - 6 }} more</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <div style="display:flex; flex-direction:column; gap:.5rem; flex-shrink:0;">
+      <form method="post" action="/datasources/{{ src.id }}/sessions">
+        <button class="btn" type="submit" style="width:100%;white-space:nowrap;">＋ New Session</button>
+      </form>
+      <a href="/datasources/{{ src.id }}" class="btn btn-ghost" style="text-align:center;">View Sessions</a>
+      <div id="dz-{{ src.id }}">
+        <button class="btn btn-ghost" style="color:var(--err);border-color:#fca5a5;width:100%;"
+                onclick="showDel('{{ src.id }}')">Delete</button>
+      </div>
+      <div id="dc-{{ src.id }}" style="display:none;text-align:center;">
+        <span style="font-size:.85rem;color:var(--err);">Delete?</span>
+        <form method="post" action="/datasources/{{ src.id }}/delete" style="display:inline;">
+          <button class="btn" style="background:var(--err);padding:.3rem .75rem;font-size:.82rem;margin-left:.3rem;">Yes</button>
+        </form>
+        <button onclick="hideDel('{{ src.id }}')"
+                style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:.82rem;margin-left:.3rem;">No</button>
+      </div>
+    </div>
   </div>
-  {% endfor %}
 </div>
+{% endfor %}
+{% else %}
+<div class="card" style="text-align:center;padding:3rem 1.5rem;color:var(--muted);">
+  <div style="font-size:2.5rem;margin-bottom:.75rem;">📂</div>
+  <p>No data sources yet. Upload a CSV file above to get started.</p>
+</div>
+{% endif %}
+
+<script>
+function validateUpload() {
+  const input = document.getElementById('csv-file-input');
+  const errEl = document.getElementById('upload-err');
+  if (!input.files || !input.files[0]) {
+    errEl.textContent = 'Please select a CSV file first.';
+    errEl.style.display = 'block';
+    return false;
+  }
+  errEl.style.display = 'none';
+  return true;
+}
+function showDel(id) {
+  document.getElementById('dz-'+id).style.display='none';
+  document.getElementById('dc-'+id).style.display='block';
+}
+function hideDel(id) {
+  document.getElementById('dc-'+id).style.display='none';
+  document.getElementById('dz-'+id).style.display='block';
+}
+</script>
 {% endblock %}

@@ -1,4 +1,4 @@
-"""Golden-path UI smoke test: upload CSV, ask question, see answer."""
+"""Golden-path UI smoke test: connect CSV data source, create session, ask question, see answer inline."""
 import csv
 import io
 
@@ -59,7 +59,7 @@ def _make_csv() -> bytes:
 def test_home_page_loads(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert "Upload" in r.text
+    assert "Data Sources" in r.text
 
 
 def test_stub_banner_visible_on_home(client):
@@ -67,31 +67,52 @@ def test_stub_banner_visible_on_home(client):
     assert "Stub mode" in r.text
 
 
-def test_upload_csv_and_ask_question(client, tmp_path):
-    # 1. Upload CSV
+def test_upload_csv_creates_datasource(client):
     csv_bytes = _make_csv()
     r = client.post(
-        "/upload",
-        files={"file": ("test_data.csv", csv_bytes, "text/csv")},
+        "/datasources/upload",
+        files={"file": ("sales.csv", csv_bytes, "text/csv")},
         follow_redirects=True,
     )
     assert r.status_code == 200
-    assert "test_data.csv" in r.text or "product" in r.text.lower()
+    # Landed on datasource detail page
+    assert "sales.csv" in r.text
+    assert "Sessions" in r.text
 
-    # Extract dataset_id from the redirect URL
-    dataset_url = r.url
-    dataset_id = str(dataset_url).rstrip("/").split("/")[-1]
 
-    # 2. Ask a question
+def test_golden_path_end_to_end(client):
+    # 1. Upload CSV → DataSource created
+    csv_bytes = _make_csv()
+    r1 = client.post(
+        "/datasources/upload",
+        files={"file": ("test_data.csv", csv_bytes, "text/csv")},
+        follow_redirects=True,
+    )
+    assert r1.status_code == 200
+    # Extract datasource_id from URL
+    ds_url = str(r1.url)
+    datasource_id = ds_url.rstrip("/").split("/")[-1]
+
+    # 2. Create session
     r2 = client.post(
-        f"/datasets/{dataset_id}/query",
-        data={"question": "What is the total revenue?"},
+        f"/datasources/{datasource_id}/sessions",
         follow_redirects=True,
     )
     assert r2.status_code == 200
-    assert "total revenue" in r2.text.lower() or "answer" in r2.text.lower()
-    # Answer should be present (stub produces non-empty text)
-    assert "stub" in r2.text.lower() or "analysis" in r2.text.lower()
+    session_url = str(r2.url)
+    session_id = session_url.rstrip("/").split("/")[-1].split("?")[0]
+
+    # 3. Ask a question — should redirect to session page with ?new=
+    r3 = client.post(
+        f"/sessions/{session_id}/query",
+        data={"question": "What is the total revenue?"},
+        follow_redirects=True,
+    )
+    assert r3.status_code == 200
+    # Answer should contain stub output
+    assert "stub" in r3.text.lower() or "analysis" in r3.text.lower()
+    # Question should appear inline
+    assert "total revenue" in r3.text.lower()
 
 
 def test_health_endpoint(client):

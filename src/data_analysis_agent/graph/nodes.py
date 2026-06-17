@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 import pandas as pd
@@ -19,46 +20,77 @@ def _cleanup_db(run_id: str) -> None:
             pass
 
 
-def _strip_sql_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        start = 1
-        end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
-        text = "\n".join(lines[start:end]).strip()
-    return text
+def _load_tool_registry(data_source_id: str) -> list[dict]:
+    from data_analysis_agent.db.session import create_db_session
+    from data_analysis_agent.db.models import ToolRow, ToolCapabilityRow
+    with create_db_session() as db:
+        tools = db.query(ToolRow).filter(ToolRow.data_source_id == data_source_id).all()
+        result = []
+        for tool in tools:
+            caps = db.query(ToolCapabilityRow).filter(ToolCapabilityRow.tool_id == tool.id).all()
+            result.append({
+                "name": tool.name,
+                "type": tool.type,
+                "description": tool.description,
+                "config": tool.config,
+                "capabilities": [
+                    {
+                        "name": c.name,
+                        "description": c.description,
+                        "parameter_schema": c.parameter_schema,
+                    }
+                    for c in caps
+                ],
+            })
+        return result
 
 
 def _build_plan_prompt(state: AgentState) -> str:
+    tools: list[dict] = state.get("tools", [])
     columns = ", ".join(state.get("column_names", []))
     question = state["question"]
-    history: list[dict] = state.get("query_history", [])
+    history: list[dict] = state.get("action_history", [])
 
-    lines = [
-        "<node:plan_query>",
-        "You are a data analyst with access to a SQL query executor.",
-        "",
-        "Table: data",
-        f"Columns: {columns}",
+    lines = ["<node:plan_action>"]
+
+    # Tool descriptions
+    if tools:
+        lines.append("Available tools:")
+        lines.append("")
+        for tool in tools:
+            lines.append(f"Tool: {tool['name']}")
+            for cap in tool.get("capabilities", []):
+                lines.append(f"  Capability: {cap['name']}")
+                lines.append(f"  Description: {cap['description']}")
+                params = cap.get("parameter_schema", {})
+                lines.append(f"  Parameters: {json.dumps(params)}")
+            lines.append("")
+
+    lines.extend([
+        f"Dataset schema — Table: data — Columns: {columns}",
         "",
         f"User question: {question}",
-    ]
+    ])
 
     if history:
         lines.append("")
-        lines.append("Previous queries and results:")
+        lines.append("Previous tool calls and results:")
         for i, entry in enumerate(history, 1):
-            lines.append(f"[{i}] SQL: {entry['sql']}")
-            lines.append(f"    Result:\n{entry['result']}")
+            lines.append(f'[{i}] capability: {entry["capability"]}')
+            lines.append(f'    parameters: {json.dumps(entry["parameters"])}')
+            if entry.get("is_error"):
+                lines.append(f'    result: Error: {entry["result"]}')
+                lines.append("    → This call failed. Please write a corrected query.")
+            else:
+                lines.append(f'    result:\n{entry["result"]}')
 
     lines.extend([
         "",
         "Decide your next step:",
-        "- If you need more data: respond with a single SQL SELECT query and nothing else.",
-        "- If you have enough information: respond with exactly:",
+        "- If you need more data: respond with a JSON tool call (no markdown, no backticks):",
+        '  {"capability": "run_query", "parameters": {"query": "SELECT ..."}}',
+        "- If you have enough information to answer: respond with exactly:",
         "  FINAL ANSWER: <your complete answer here>",
-        "",
-        "Do not include markdown, backticks, or explanations when writing SQL.",
     ])
 
     return "\n".join(lines)
@@ -66,6 +98,9 @@ def _build_plan_prompt(state: AgentState) -> str:
 
 def load_data(state: AgentState) -> AgentState:
     try:
+        # Load tool registry from DB
+        tools = _load_tool_registry(state["data_source_id"])
+
         df = pd.read_csv(state["csv_path"])
         column_names = list(df.columns)
         row_count = len(df)
@@ -74,20 +109,21 @@ def load_data(state: AgentState) -> AgentState:
         df.to_sql("data", conn, index=False, if_exists="replace")
         _db_cache[state["run_id"]] = conn
 
-        log.info("load_data.done", run_id=state.get("run_id"), rows=row_count, cols=len(column_names))
+        log.info("load_data.done", run_id=state.get("run_id"), rows=row_count, tools=len(tools))
         return {
             **state,
+            "tools": tools,
             "column_names": column_names,
             "row_count": row_count,
-            "query_history": [],
+            "action_history": [],
             "iteration_count": 0,
         }
     except Exception as exc:
         log.error("load_data.failed", run_id=state.get("run_id"), error=str(exc))
-        return {**state, "error": f"Failed to read CSV: {exc}"}
+        return {**state, "error": f"Failed to load data: {exc}"}
 
 
-def plan_query(state: AgentState) -> AgentState:
+def plan_action(state: AgentState) -> AgentState:
     try:
         from data_analysis_agent.llm.client import get_llm_client
 
@@ -108,49 +144,99 @@ def plan_query(state: AgentState) -> AgentState:
 
         if response.upper().startswith("FINAL ANSWER:"):
             new_state["answer"] = response[len("FINAL ANSWER:"):].strip()
-            log.info("plan_query.final_answer", run_id=state.get("run_id"), iterations=state.get("iteration_count", 0))
+            log.info("plan_action.final_answer", run_id=state.get("run_id"), iterations=state.get("iteration_count", 0))
         else:
-            log.info("plan_query.sql_requested", run_id=state.get("run_id"), iteration=state.get("iteration_count", 0))
+            log.info("plan_action.tool_call", run_id=state.get("run_id"), iteration=state.get("iteration_count", 0))
 
         return new_state
     except Exception as exc:
-        log.error("plan_query.failed", run_id=state.get("run_id"), error=str(exc))
+        log.error("plan_action.failed", run_id=state.get("run_id"), error=str(exc))
         _cleanup_db(state.get("run_id", ""))
-        return {**state, "error": f"LLM query planning failed: {exc}"}
+        return {**state, "error": f"LLM action planning failed: {exc}"}
 
 
-def execute_query(state: AgentState) -> AgentState:
+def _strip_json_fences(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        start = 1
+        end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
+        text = "\n".join(lines[start:end]).strip()
+    return text
+
+
+def _execute_csv_query(conn: sqlite3.Connection, sql: str) -> tuple[str, bool]:
+    """Returns (result_str, is_error)."""
+    if not sql.upper().lstrip().startswith("SELECT"):
+        return f"Only SELECT statements are allowed. Got: {sql[:80]}", True
+    try:
+        cursor = conn.execute(sql)
+        rows = cursor.fetchmany(200)
+        col_headers = [d[0] for d in cursor.description] if cursor.description else []
+        result_lines = [",".join(col_headers)]
+        for row in rows:
+            result_lines.append(",".join("" if v is None else str(v) for v in row))
+        return "\n".join(result_lines), False
+    except sqlite3.Error as exc:
+        return str(exc), True
+
+
+def execute_action(state: AgentState) -> AgentState:
     try:
         from data_analysis_agent.config.settings import get_settings
         max_iterations = get_settings().max_agent_iterations
 
         run_id = state["run_id"]
-        sql = _strip_sql_fences(state.get("llm_response", ""))
+        raw = _strip_json_fences(state.get("llm_response", ""))
 
-        if not sql.upper().lstrip().startswith("SELECT"):
+        # Parse the tool call JSON
+        try:
+            call = json.loads(raw)
+            capability_name: str = call["capability"]
+            parameters: dict = call.get("parameters", {})
+        except (json.JSONDecodeError, KeyError) as exc:
             _cleanup_db(run_id)
-            return {**state, "error": f"LLM returned non-SELECT SQL: {sql[:120]}"}
+            return {**state, "error": f"LLM returned invalid tool call JSON: {exc} — raw: {raw[:200]}"}
 
-        conn = _db_cache.get(run_id)
-        if conn is None:
-            return {**state, "error": "In-memory DB not found — load_data must precede execute_query"}
+        # Find the capability across loaded tools
+        found_tool_type: str | None = None
+        tools: list[dict] = state.get("tools", [])
+        for tool in tools:
+            for cap in tool.get("capabilities", []):
+                if cap["name"] == capability_name:
+                    found_tool_type = tool["type"]
+                    break
+            if found_tool_type:
+                break
 
-        cursor = conn.execute(sql)
-        rows = cursor.fetchmany(200)
-        col_headers = [d[0] for d in cursor.description] if cursor.description else []
+        if found_tool_type is None:
+            _cleanup_db(run_id)
+            return {**state, "error": f"Unknown capability: {capability_name}"}
 
-        result_lines = [",".join(col_headers)]
-        for row in rows:
-            result_lines.append(",".join("" if v is None else str(v) for v in row))
-        result_str = "\n".join(result_lines)
+        # Dispatch by tool type
+        if found_tool_type == "csv_query" and capability_name == "run_query":
+            conn = _db_cache.get(run_id)
+            if conn is None:
+                return {**state, "error": "In-memory DB not found — load_data must run before execute_action"}
+            sql = parameters.get("query", "")
+            result_str, is_error = _execute_csv_query(conn, sql)
+        else:
+            _cleanup_db(run_id)
+            return {**state, "error": f"No executor for tool type '{found_tool_type}' capability '{capability_name}'"}
 
-        history = list(state.get("query_history", []))
-        history.append({"sql": sql, "result": result_str})
+        history = list(state.get("action_history", []))
+        history.append({
+            "capability": capability_name,
+            "parameters": parameters,
+            "result": result_str,
+            "is_error": is_error,
+        })
         iteration_count = state.get("iteration_count", 0) + 1
 
-        log.info("execute_query.done", run_id=run_id, iteration=iteration_count, result_rows=len(rows))
+        log.info("execute_action.done", run_id=run_id, capability=capability_name,
+                 iteration=iteration_count, is_error=is_error)
 
-        new_state = {**state, "query_history": history, "iteration_count": iteration_count}
+        new_state = {**state, "action_history": history, "iteration_count": iteration_count}
 
         if iteration_count >= max_iterations:
             _cleanup_db(run_id)
@@ -158,27 +244,29 @@ def execute_query(state: AgentState) -> AgentState:
 
         return new_state
     except Exception as exc:
-        log.error("execute_query.failed", run_id=state.get("run_id"), error=str(exc))
+        log.error("execute_action.failed", run_id=state.get("run_id"), error=str(exc))
         _cleanup_db(state.get("run_id", ""))
-        return {**state, "error": f"SQL execution failed: {exc}"}
+        return {**state, "error": f"Action execution failed: {exc}"}
 
 
 def finalize(state: AgentState) -> AgentState:
     try:
         from data_analysis_agent.db.session import create_db_session
         from data_analysis_agent.db.models import QueryRecordRow, AgentRunRow
-        with create_db_session() as session:
-            qr = session.get(QueryRecordRow, state["query_record_id"])
+        history = state.get("action_history", [])
+        with create_db_session() as db:
+            qr = db.get(QueryRecordRow, state["query_record_id"])
             if qr:
                 qr.answer = state.get("answer", "")
                 qr.status = "completed"
+                qr.iteration_count = state.get("iteration_count", 0)
+                qr.query_history_json = json.dumps(history)
                 qr.input_tokens = state.get("input_tokens", 0)
                 qr.output_tokens = state.get("output_tokens", 0)
                 qr.total_tokens = state.get("total_tokens", 0)
                 qr.estimated_cost_usd = state.get("estimated_cost_usd")
                 qr.api_request_count = state.get("api_request_count", 1)
-                qr.iteration_count = state.get("iteration_count", 0)
-            run = session.get(AgentRunRow, state["run_id"])
+            run = db.get(AgentRunRow, state["run_id"])
             if run:
                 run.status = "completed"
         _cleanup_db(state["run_id"])
@@ -194,12 +282,12 @@ def handle_error(state: AgentState) -> AgentState:
         from data_analysis_agent.db.session import create_db_session
         from data_analysis_agent.db.models import QueryRecordRow, AgentRunRow
         error_msg = state.get("error", "Unknown error")
-        with create_db_session() as session:
-            qr = session.get(QueryRecordRow, state.get("query_record_id", ""))
+        with create_db_session() as db:
+            qr = db.get(QueryRecordRow, state.get("query_record_id", ""))
             if qr:
                 qr.status = "failed"
                 qr.error_message = error_msg
-            run = session.get(AgentRunRow, state.get("run_id", ""))
+            run = db.get(AgentRunRow, state.get("run_id", ""))
             if run:
                 run.status = "failed"
                 run.error_message = error_msg

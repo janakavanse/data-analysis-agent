@@ -7,18 +7,46 @@ def _uid() -> str:
     return str(uuid4())
 
 
-class Dataset(BaseModel):
+class DataSource(BaseModel):
     id: str = Field(default_factory=_uid)
-    filename: str
-    file_path: str
+    name: str
+    type: str = "csv"
+    description: str | None = None
+    file_path: str | None = None
     row_count: int | None = None
     column_names: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
 
 
+class Tool(BaseModel):
+    id: str = Field(default_factory=_uid)
+    data_source_id: str
+    name: str
+    type: str
+    description: str
+    config: dict = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+
+class ToolCapability(BaseModel):
+    id: str = Field(default_factory=_uid)
+    tool_id: str
+    name: str
+    description: str
+    parameter_schema: dict = Field(default_factory=dict)
+
+
+class Session(BaseModel):
+    id: str = Field(default_factory=_uid)
+    data_source_id: str
+    name: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class QueryRecord(BaseModel):
     id: str = Field(default_factory=_uid)
-    dataset_id: str
+    session_id: str
     question: str
     answer: str | None = None
     status: str = "pending"

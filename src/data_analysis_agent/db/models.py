@@ -18,12 +18,14 @@ class Base(DeclarativeBase):
     pass
 
 
-class DatasetRow(Base):
-    __tablename__ = "datasets"
+class DataSourceRow(Base):
+    __tablename__ = "data_sources"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
-    filename: Mapped[str] = mapped_column(Text, nullable=False)
-    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False, default="csv")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     column_names_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -41,27 +43,85 @@ class DatasetRow(Base):
         self.column_names_json = json.dumps(value)
 
 
-class QueryRecordRow(Base):
-    __tablename__ = "query_records"
+class ToolRow(Base):
+    __tablename__ = "tools"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
-    dataset_id: Mapped[str] = mapped_column(Text, nullable=False)
-    question: Mapped[str] = mapped_column(Text, nullable=False)
-    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    estimated_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
-    api_request_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    iteration_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    data_source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now
+    )
+
+    @property
+    def config(self) -> dict:
+        if self.config_json:
+            return json.loads(self.config_json)
+        return {}
+
+
+class ToolCapabilityRow(Base):
+    __tablename__ = "tool_capabilities"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    tool_id: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    parameter_schema_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now
+    )
+
+    @property
+    def parameter_schema(self) -> dict:
+        return json.loads(self.parameter_schema_json)
+
+
+class SessionRow(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    data_source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_now
     )
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_now, onupdate=_now
     )
+
+
+class QueryRecordRow(Base):
+    __tablename__ = "query_records"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    iteration_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    query_history_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    api_request_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, default=_now, onupdate=_now
+    )
+
+    @property
+    def query_history(self) -> list[dict]:
+        if self.query_history_json:
+            return json.loads(self.query_history_json)
+        return []
 
 
 class AgentRunRow(Base):

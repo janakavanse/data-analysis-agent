@@ -6,15 +6,15 @@ class StubLLMProvider(LLMProvider):
     """Offline stub — returns plausible shaped output without any API call."""
 
     def complete(self, prompt: str) -> LLMResult:
-        if "<node:plan_query>" not in prompt:
+        if "<node:plan_action>" not in prompt:
             text = "(stub) No response — unrecognized node tag in prompt."
-        elif "[1] SQL:" in prompt:
+        elif "[1] capability:" in prompt:
             text = (
                 "FINAL ANSWER: (stub) Based on the query results, the data analysis is complete. "
                 "Set DATAANALYSIS_OPENROUTER_API_KEY to get real AI-powered answers."
             )
         else:
-            text = "SELECT COUNT(*) as total_rows FROM data"
+            text = '{"capability": "run_query", "parameters": {"query": "SELECT COUNT(*) as total_rows FROM data"}}'
 
         return LLMResult(
             text=text,

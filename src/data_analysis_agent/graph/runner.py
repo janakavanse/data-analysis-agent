@@ -10,22 +10,24 @@ log = structlog.get_logger()
 
 def run_pipeline(
     query_record_id: str,
-    dataset_id: str,
+    session_id: str,
+    data_source_id: str,
     question: str,
     csv_path: str,
 ) -> AgentState:
     init_db()
 
-    with create_db_session() as session:
+    with create_db_session() as db:
         run = AgentRunRow(query_record_id=query_record_id)
-        session.add(run)
-        session.flush()
+        db.add(run)
+        db.flush()
         run_id = run.id
 
     initial: AgentState = {
         "run_id": run_id,
         "query_record_id": query_record_id,
-        "dataset_id": dataset_id,
+        "session_id": session_id,
+        "data_source_id": data_source_id,
         "question": question,
         "csv_path": csv_path,
         "error": None,

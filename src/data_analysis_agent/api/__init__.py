@@ -27,9 +27,9 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
 
-    from data_analysis_agent.api import health, datasets
+    from data_analysis_agent.api import health, routes
     app.include_router(health.router)
-    app.include_router(datasets.router)
+    app.include_router(routes.router)
 
     return app
 
