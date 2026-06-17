@@ -161,14 +161,14 @@ Build what the spec says, nothing more.
 
 ### When to use a ReAct loop
 
-Use a ReAct (Reason + Act) loop whenever the agent needs to interact with external data to answer a question. This covers:
+Use a ReAct (Reason + Act) loop whenever the agent needs to act on the outside world to answer a question, rather than answering from a single prompt. This covers any tool-using agent — for example:
 
 - Data analysis over CSV / database tables
 - Web search agents that need to look up facts
 - File system agents that browse or read files
 - API agents that call external services
 
-**Never** design a single-shot pipeline for these cases ("pass a sample to the LLM and return whatever it says"). Single-shot answers are wrong for any dataset larger than the sample, and cannot self-correct.
+**Never** design a single-shot pipeline for these cases ("gather some context, pass it to the LLM, return whatever it says"). Single-shot answers cannot verify their inputs and cannot self-correct, so they break down as soon as the real environment differs from the sampled context.
 
 ### The canonical ReAct loop shape
 
@@ -176,7 +176,7 @@ Use a ReAct (Reason + Act) loop whenever the agent needs to interact with extern
 START
   │
   ▼
-load_data          ← load full data into queryable form (in-memory SQLite, index, etc.)
+setup              ← prepare what the agent will act on (load data, open a connection, build an index)
   │
   ▼
 plan_action ◄───────────────────────────────────┐
@@ -187,9 +187,9 @@ plan_action ◄─────────────────────�
   │                                             │
   └──(action returned) → execute_action ────────┘
                               │
-                              ├──(hard error: non-recoverable) → handle_error
+                              ├──(non-recoverable error) → handle_error
                               │
-                              └──(SQL/API error: feed back to LLM for self-correction)
+                              └──(recoverable error: feed back to LLM for self-correction)
 ```
 
 ### Termination protocol (mandatory)
@@ -222,47 +222,28 @@ Route to `handle_error`. Never let a loop run unboundedly.
 
 ### Self-correction on action errors
 
-When an action fails (e.g. SQL syntax error, API 4xx, file not found), **do not immediately fail the pipeline**. Instead:
+When an action fails (e.g. a malformed query, an API 4xx, a missing file), **do not immediately fail the run**. Instead:
 
-1. Append the failed action and its error message to `action_history` in state, flagged as `is_error: True`
+1. Append the failed action and its error message to the action history in state, flagged as an error
 2. Increment `iteration_count`
 3. Route back to `plan_action`
 
-The prompt for the next `plan_action` call shows the error inline:
+The prompt for the next `plan_action` call shows the error inline so the LLM can correct itself:
 
 ```
-[2] SQL: SELECT MIN(x) FROM data GROUP BY region
-    Error: misuse of aggregate function MIN()
-    → This query failed. Please write a corrected SQL query.
+[2] Action: <the action that failed>
+    Error: <the error message>
+    → This action failed. Please correct it and try again.
 ```
 
-The LLM sees the error and writes a corrected action. Only fail the pipeline if:
-- The action is structurally invalid (e.g. a non-SELECT SQL when only reads are allowed)
+Only fail the run if:
+- The action is structurally invalid (e.g. a write when only reads are allowed)
 - Max iterations is reached
 - The LLM call itself fails (network error, 5xx)
 
-### In-memory data cache pattern
+### Action history in state
 
-When the agent loads data at the start of a run (CSV → SQLite, documents → vector index, etc.), the connection or index object is not serializable and cannot live in `AgentState`. Use a module-level dict keyed by `run_id`:
-
-```python
-_db_cache: dict[str, sqlite3.Connection] = {}
-
-def _cleanup_db(run_id: str) -> None:
-    conn = _db_cache.pop(run_id, None)
-    if conn:
-        conn.close()
-```
-
-- `load_data` creates the resource and stores it: `_db_cache[state["run_id"]] = conn`
-- `execute_action` reads it: `conn = _db_cache.get(run_id)`
-- `finalize` and `handle_error` both call `_cleanup_db(run_id)` in a `finally` block
-
-This guarantees the resource is cleaned up whether the pipeline succeeds or fails.
-
-### Action history in AgentState
-
-The running log of actions and their results must live in state so the full context is available to the LLM on every `plan_action` call:
+The running log of actions and their results must live in agent state so the full context is available to the LLM on every `plan_action` call:
 
 ```python
 class AgentState(TypedDict, total=False):
@@ -272,17 +253,21 @@ class AgentState(TypedDict, total=False):
     llm_response: str           # raw last LLM output — router inspects this for FINAL ANSWER
 ```
 
-Persist `action_history` to the database as JSON so it can be displayed in the UI (the "Agent reasoning" trace).
+Persist the action history so the reasoning trace can be displayed or audited later.
+
+### Non-serializable resources
+
+If `setup` creates a resource that cannot be serialized into agent state (a DB connection, a vector index, an open file handle), keep it in a module-level store keyed by `run_id`, and release it in **both** the `finalize` and `handle_error` paths so it is cleaned up whether the run succeeds or fails.
 
 ### What to spec in 07-agent-graph.md before writing code
 
 Before writing any node code, `07-agent-graph.md` must answer:
 
-1. What action type does the LLM generate? (SQL, HTTP request, file path, etc.)
+1. What kind of action does the LLM generate? (query, HTTP request, file path, tool call, etc.)
 2. What is the exact FINAL ANSWER signal string?
 3. What constitutes a recoverable action error vs a fatal error?
 4. What is the max iterations default?
-5. How is the in-session data store created and cleaned up?
+5. What does `setup` prepare, and how is it cleaned up?
 6. What fields does `AgentState` carry for history and iteration count?
 
 If any of these are missing from the spec, raise a blocker before Phase 2 starts.
