@@ -152,15 +152,14 @@ After Phase 2 gate passes (skeleton is running):
 ## Stage 5 — Build v0.1 (Phases 1 + 2)
 
 Build immediately after scaffold. No gates until QA. **Follow `spec/engineering/project-layout.md`
-exactly** and copy reference shapes from `scaffold/`. Full gate definitions live in
-`spec/engineering/phases.md` — don't restate them, run them.
+exactly.** Full gate definitions live in `spec/engineering/phases.md` — don't restate them, run them.
 
 ### Phase 1 — domain models + schema
 1. Implement `config/settings.py`, `domain/<entity>.py`, `db/models.py`, `db/session.py` — direct
    SQLAlchemy, **no repository pattern**.
-2. Copy `alembic/script.py.mako` from `scaffold/` (must exist before any alembic command); create
-   `alembic/env.py` + `alembic.ini` (`env.py` reads `DATABASE_URL` from settings, sets
-   `target_metadata = Base.metadata`).
+2. Create `alembic/script.py.mako` by hand (verbatim in `project-layout.md` § Phase 1 — nothing
+   generates it, must exist before any alembic command); create `alembic/env.py` + `alembic.ini`
+   (`env.py` reads `DATABASE_URL` from settings, sets `target_metadata = Base.metadata`).
 3. Run the alembic sequence in `project-layout.md` § Phase 1: `revision --autogenerate` → `upgrade head`
    → `current` (must show a revision, not blank).
 4. Implement `tests/conftest.py` + `tests/unit/db/test_models.py` — same DB driver as production

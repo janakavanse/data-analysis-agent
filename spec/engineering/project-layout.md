@@ -1,8 +1,10 @@
 # Project Layout — Canonical Structure
 
-All agents built from this boilerplate follow this layout exactly. The reference file shapes live in
-[`scaffold/`](../../scaffold/) — copy them and substitute `<package>`. Keep this tree and the scaffold
-in sync.
+All agents built from this boilerplate follow this layout exactly. The files below (`settings.py`,
+`session.py`, `models.py`, `graph/*`, `api/*`, `conftest.py`, `test_pipeline.py`) are standard
+FastAPI/SQLAlchemy/LangGraph shapes — generate them idiomatically from this tree and the rules below.
+The one exception is `alembic/script.py.mako`, which nothing generates — it's given verbatim under
+§ Phase 1.
 
 ---
 
@@ -89,16 +91,42 @@ whether the code works. Every generated README must:
 **Critical:** `tests/` is at the repo root — **not** inside `src/`. `pyproject.toml` must set
 `testpaths = ["tests"]`.
 
-Reference file shapes for `settings.py`, `session.py`, `models.py`, the `graph/*` modules, `api/*`,
-`conftest.py`, `test_pipeline.py`, and `script.py.mako` are in [`scaffold/`](../../scaffold/).
-
 ---
 
 ## Phase 1 alembic sequence (mandatory, in order)
 
 All commands run from the **repo root** (where `alembic.ini` and `pyproject.toml` live).
-`alembic/script.py.mako` must exist first — copy it from [`scaffold/alembic/script.py.mako`](../../scaffold/alembic/script.py.mako);
-nothing generates it, and `alembic revision --autogenerate` fails with `FileNotFoundError` without it.
+`alembic/script.py.mako` must exist first — **create it by hand**; nothing generates it, and
+`alembic revision --autogenerate` fails with `FileNotFoundError` without it:
+
+```mako
+"""${message}
+
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
+
+"""
+from typing import Sequence, Union
+from alembic import op
+import sqlalchemy as sa
+${imports if imports else ""}
+
+revision: str = ${repr(up_revision)}
+down_revision: Union[str, None] = ${repr(down_revision)}
+branch_labels: Union[str, Sequence[str], None] = ${repr(branch_labels)}
+depends_on: Union[str, Sequence[str], None] = ${repr(depends_on)}
+
+
+def upgrade() -> None:
+    ${upgrades if upgrades else "pass"}
+
+
+def downgrade() -> None:
+    ${downgrades if downgrades else "pass"}
+```
+
+Then run the sequence:
 
 ```bash
 # 1. Create alembic/ (env.py, alembic.ini, script.py.mako)

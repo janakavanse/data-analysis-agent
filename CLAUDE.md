@@ -46,4 +46,4 @@ run `/build [your idea]`.
 | `qa-auditor` | Test and gate completed phases |
 | `drift-auditor` | Audit spec/code drift |
 
-All live in `.claude/agents/`. Reference file shapes for a new project are in [`scaffold/`](scaffold/).
+All live in `.claude/agents/`. The canonical project layout is in [`spec/engineering/project-layout.md`](spec/engineering/project-layout.md).
