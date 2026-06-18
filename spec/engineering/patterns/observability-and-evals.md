@@ -37,13 +37,12 @@ catch that. Keep them small, fixed, and version-controlled.
 - **Regression gate** — evals run in CI; a drop below the threshold fails the build. This is what makes
   prompt/model changes safe to ship.
 
-## What lands when
+## Phasing
 
-- **Phase 2 (baseline):** structured per-`run_id` logs + token/cost on the run + an **eval-harness
-  skeleton** (one tiny dataset, one assertion, runs against the stub in CI). This is a gate item — see
-  [`../phases.md`](../phases.md).
-- **Earns its place:** OTel trace export + aggregate per-run metrics/latency dashboards, and a richer
-  eval suite (LLM-judge, component evals) as the agent's answers get more open-ended.
+Baseline — structured per-`run_id` logs + token/cost on the run + an **eval-harness skeleton** (one tiny
+dataset, one assertion, runs against the stub in CI) at Phase 2 (a gate item); OTel trace export +
+aggregate metrics/latency dashboards + a richer eval suite (LLM-judge, component evals) earn their place.
+Authority: [`../phases.md`](../phases.md) § Agentic layers by phase.
 
 ## Don't log secrets
 

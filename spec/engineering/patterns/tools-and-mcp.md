@@ -57,8 +57,8 @@ Treat every model-chosen tool call as untrusted input:
 - **Irreversible / high-stakes actions** (send, delete, pay, deploy) route through human-in-the-loop
   approval — see [`guardrails-and-hitl.md`](guardrails-and-hitl.md).
 
-## Baseline vs. earns-its-place
+## Phasing
 
-- **Baseline (Phase 2):** the tool registry + at least one **MCP tool, stubbed**, behind the
-  action-safety boundary. The stub returns a deterministic typed result offline.
-- **Earns its place:** real MCP servers (Phase 3+), additional integrations as the spec requires.
+Baseline — tool registry + ≥1 **stubbed MCP tool** behind the action-safety boundary at Phase 2; real
+MCP servers + more integrations earn their place. Authority: [`../phases.md`](../phases.md) § Agentic
+layers by phase.

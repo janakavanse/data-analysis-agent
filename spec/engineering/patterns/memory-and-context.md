@@ -60,9 +60,8 @@ Prompt caching (see [`llm-providers.md`](llm-providers.md) § Model layer) makes
 (system prompt + tool descriptions) cheap to resend every turn — keep that prefix byte-stable so it
 stays cached.
 
-## Baseline vs. earns-its-place
+## Phasing
 
-- **Baseline (Phase 2):** working + short-term memory, and the context-assembly function. Stubbed
-  embeddings for long-term so the wiring exists offline.
-- **Earns its place:** real long-term memory (when the agent must remember across sessions) and
-  summarization-based compaction (when sessions get long). See [`../phases.md`](../phases.md).
+Baseline — working + short-term memory + context assembly land **stubbed at Phase 2** (long-term
+embeddings stubbed); long-term memory + compaction earn their place. Authority:
+[`../phases.md`](../phases.md) § Agentic layers by phase.

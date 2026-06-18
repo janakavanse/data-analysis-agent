@@ -49,8 +49,9 @@ Every sub-agent is a ReAct loop and keeps all the mandatory mechanics from
 self-correction. A multi-agent system without per-agent iteration guards can loop unboundedly across
 agents — bound the **total** work (a global step budget), not just each loop.
 
-## Baseline vs. earns-its-place
+## Phasing
 
-- **Baseline:** single ReAct loop with reflection available as a same-agent quality step.
-- **Earns its place:** true multi-agent topologies, only when an escalation criterion above is met and
-  recorded in `02-architecture.md` § Agentic stack layers used.
+Baseline — a single ReAct loop (reflection available as a same-agent quality step); true multi-agent
+topologies earn their place only when an escalation criterion above is met and recorded in
+`02-architecture.md` § Agentic stack layers used. Authority: [`../phases.md`](../phases.md) § Agentic
+layers by phase.

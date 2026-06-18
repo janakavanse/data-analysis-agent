@@ -46,9 +46,8 @@ Treat as approval-required unless the spec explicitly downgrades it: external se
 writes/deletes to systems of record, payments, deploys/infra changes, anything publicly visible. Pure
 reads and the agent's own scratch are auto-approved.
 
-## Baseline vs. earns-its-place
+## Phasing
 
-- **Baseline (Phase 2):** input validation + output validation + the action-safety boundary. No live
-  high-stakes actions exist yet (everything's stubbed), so the classifier exists but always passes.
-- **Earns its place:** real HITL interrupts (Phase 4+), the moment the agent gains a real irreversible
-  action. Recorded in `02-architecture.md` § Agentic stack layers used.
+Baseline — input + output validation + the action-safety boundary at Phase 2 (the classifier exists but
+passes, since nothing high-stakes is live yet); real HITL interrupts earn their place the moment the
+agent gains a real irreversible action. Authority: [`../phases.md`](../phases.md) § Agentic layers by phase.

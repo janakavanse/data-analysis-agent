@@ -47,8 +47,7 @@ next steps **in real time** — never reconstruct it at the end. A missing sessi
 ## 3. The One-Approval Gate Law
 
 Goal: **one prompt → working skeleton fast.** Decisions are captured upfront and approved once. The
-skeleton is not a bare loop — it includes the raised agentic baseline (memory + MCP tools + retrieval +
-evals), all stubbed and offline. → [`agentic-architecture.md`](agentic-architecture.md).
+skeleton includes the raised agentic baseline (stubbed/offline), not a bare loop — see § 10.
 
 ```
 INTAKE (scope · stack · trigger · constraints)  →  DRAFT (spec + tech design + plan together)

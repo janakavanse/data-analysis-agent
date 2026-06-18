@@ -40,10 +40,9 @@ it resumes from the last checkpoint instead of restarting.
 - **Background execution** — long runs execute in a worker/background task, not inline in the request;
   the API returns a `run_id` and the client polls or streams (SSE) progress from `action_history`.
 
-## Baseline vs. earns-its-place
+## Phasing
 
-- **Baseline (Phase 2):** runs are short and synchronous; persistence is the `runs`/`messages` tables.
-  No checkpointer required yet.
-- **Earns its place:** the checkpointer + resumable/background execution (Phase 4+), when runs become
-  long, interruptible, or must survive a restart. Idempotency keys land with the first real
-  side-effecting action.
+Baseline — short synchronous runs; persistence is the `runs`/`messages` tables, no checkpointer. The
+checkpointer + resumable/background execution earn their place when runs become long, interruptible, or
+must survive a restart; idempotency keys land with the first real side-effecting action. Authority:
+[`../phases.md`](../phases.md) § Agentic layers by phase.

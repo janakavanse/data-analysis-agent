@@ -51,9 +51,8 @@ set of `query → expected-source` and assert recall@k in the eval harness
 ([`observability-and-evals.md`](observability-and-evals.md)) — a run can return 200 with a fluent,
 wrong answer because retrieval missed.
 
-## Baseline vs. earns-its-place
+## Phasing
 
-- **Baseline (Phase 2):** embeddings + vector store **wired and stubbed** (deterministic fake vectors)
-  so the path exists offline, plus the retrieval eval hook.
-- **Earns its place:** a real corpus, real embeddings, hybrid + rerank (Phase 3+) — only when answers
-  depend on a knowledge base.
+Baseline — embeddings + vector store **wired/stubbed** at Phase 2 (+ the retrieval eval hook); a real
+corpus, real embeddings, hybrid + rerank earn their place when answers depend on a knowledge base.
+Authority: [`../phases.md`](../phases.md) § Agentic layers by phase.
