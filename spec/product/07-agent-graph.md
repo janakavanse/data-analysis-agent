@@ -6,7 +6,7 @@
 >
 > The spec-reviewer treats this file as a **CRITICAL BLOCKER** — the tech design will not be approved if this file is absent or incomplete when an agent framework is in use.
 >
-> **If the agent acts on the outside world** (tools, data, search — see Rule #9), it must use a **ReAct loop**. This file must then answer the eight pre-coding questions in `spec/engineering/ai-agents.md` Section 10 — including the **action-safety boundary** (what the executor permits / how actions are validated / the sandbox) and what **`force_finalize`** synthesises when iterations run out. The State below must carry the loop-control and usage fields, and Edge Topology must show the `plan_action → execute_action` loop with iteration exhaustion routed to `force_finalize` (best-effort), not a one-shot pipeline.
+> **If the agent acts on the outside world** (tools, data, search — see Rule #9), it must use a **ReAct loop**. This file must then answer the eight pre-coding questions in `spec/engineering/ai-agents.md` Section 10 — including the **action-safety boundary** (what the executor permits / how actions are validated / the sandbox) and what **`force_finalize`** synthesises when iterations run out. The State below must carry the loop-control and usage fields; Edge Topology must show the `plan_action → execute_action` loop with iteration exhaustion routed to `force_finalize` (best-effort), not a one-shot pipeline; and the `action_history` trace must be surfaced to the user live, not just logged.
 
 ---
 

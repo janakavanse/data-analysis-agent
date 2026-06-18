@@ -36,8 +36,8 @@ The planner sub-agent will customize this for your project, but the general stru
   6. **Live-server smoke:** the agent starts the app (`uv run python -m <pkg>`) and hits `/health` plus one real page with `curl`. Both return 200. Exit codes logged in the session report.
   7. **Stub mode is visibly labelled:** every rendered page shows a banner when the LLM provider is stubbed, so a human viewer cannot mistake stub output for real AI output.
   8. **For ReAct-loop agents (Rule #9): the stub simulates at least two iterations** — one where the LLM generates an action, and one where it emits `FINAL ANSWER:`. A stub that returns a final answer on the first call without executing any action does not validate the loop. See `spec/engineering/ai-agents.md` Section 10 for the full pattern.
-  9. **Observability baseline:** every node emits a structured (JSON) log event with `run_id` bound, and every LLM call records input/output tokens + estimated cost, accumulated on the run record. Verifiable in the test DB and log output — stubs report zero cost but real token *shape*. (Logging is a Phase 2 concern, not deferred to Phase 9 — a loop you can't trace is a loop you can't debug.)
-  10. **For ReAct-loop agents: iteration exhaustion routes to `force_finalize`, not `handle_error`.** A test drives the loop past `max_agent_iterations` (or forces repeated action errors) and asserts the run completes with a substantive best-effort answer, not a hard failure.
+  9. **Observability baseline:** every node emits a structured (JSON) log bound to `run_id`; every LLM call records tokens + estimated cost on the run; and the reasoning trace (`action_history`) is surfaced to the user, not just logged. Verifiable in the test DB and log output.
+  10. **Iteration exhaustion routes to `force_finalize`, not `handle_error`.** A test drives the loop past `max_agent_iterations` and asserts a substantive best-effort answer, not a hard failure.
 
 ### Phase 3 — First Real Integration
 - Replace the most critical stub with a real external call

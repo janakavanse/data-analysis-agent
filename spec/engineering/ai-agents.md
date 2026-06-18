@@ -183,11 +183,12 @@ START → setup → plan_action ──(action)──► execute_action ──┐
 ### Mandatory mechanics
 
 - **Termination signal.** The LLM ends the loop with a fixed prefix, e.g. `FINAL ANSWER: <text>`. `plan_action` checks for it (case-insensitive): if present, strip it and route to `finalize`; otherwise treat the response as the next action. Without this the loop never terminates on its own.
-- **Max-iterations guard.** Every loop has a configurable ceiling (`max_agent_iterations`, default 10). When `iteration_count` reaches it — or when the last N actions all errored — route to **`force_finalize`**, never loop unboundedly.
-- **Best-effort finalization (`force_finalize`).** Hitting the ceiling or repeated errors is *not* a crash — the run must still return a substantive answer. `force_finalize` asks the LLM to synthesise the best answer it can from `action_history` and state what's missing, rather than emitting "I couldn't do it." Reserve `handle_error` for genuinely fatal failures (data missing, LLM/network down). To help the model land in time, inject a wrap-up instruction into `plan_action` once `iteration_count >= max - 2`.
-- **Self-correction.** On a recoverable action error (malformed query, API 4xx, missing file), don't fail the run: append the failed action + error to history, increment `iteration_count`, and route back to `plan_action` so the LLM sees the error inline and retries. Hard-fail (→ `handle_error`) only on structurally invalid actions (e.g. a write when only reads are allowed) or an LLM-call failure (network/5xx); iteration exhaustion goes to `force_finalize`, not `handle_error`.
-- **Action-safety boundary.** The executor runs model-generated actions against the outside world — treat them as untrusted. Allow only an explicit set of operations (e.g. read-only `SELECT`, a named tool allowlist), validate each action *before* running it, and never `exec`/`eval` raw model output in an unsandboxed process. Excessive agency is a documented LLM failure mode; the boundary is a spec decision, not an afterthought.
-- **Usage accounting.** Every LLM call returns structured usage — input/output tokens and estimated cost — accumulated in state and persisted on the run record. An agent whose token/cost per run is invisible cannot be operated or debugged. Emit one structured (JSON) log event per node with `run_id` bound, and log each provider call with tokens, cost, and latency.
+- **Max-iterations guard.** Configurable ceiling (`max_agent_iterations`, default 10). On reaching it — or after repeated consecutive errors — route to **`force_finalize`**, never loop unboundedly.
+- **Best-effort finalization (`force_finalize`).** Running out of iterations is not a crash: synthesise the best answer from `action_history` and note what's missing — never a bare "I couldn't do it." Reserve `handle_error` for fatal failures (data missing, LLM/network down).
+- **Self-correction.** On a recoverable action error (bad query, API 4xx, missing file), append the action + error to history and route back to `plan_action` so the LLM sees it inline and retries. Hard-fail (→ `handle_error`) only on a structurally invalid action or an LLM-call failure.
+- **Action-safety boundary.** Treat model-generated actions as untrusted: permit only an explicit operation set (read-only `SELECT`, a named tool allowlist), validate each action before running it, and never `exec`/`eval` raw output unsandboxed.
+- **Operator observability.** Every LLM call returns structured usage (input/output tokens, estimated cost) accumulated in state and persisted on the run; every node emits a structured (JSON) log bound to `run_id`. Token/cost per run must never be invisible.
+- **User transparency.** Observability is not only logs. The agent must show the user *what it is doing as it happens* — each step's action, its result, then the final answer — streamed or rendered from `action_history`. The run is a glass box, never a spinner hiding a black box.
 
 ### State
 
@@ -202,11 +203,11 @@ tokens_output: int
 estimated_cost_usd: float | None
 ```
 
-Persist `action_history` (the reasoning trace, for display/audit) and the usage fields. Resources that can't be serialized into state (DB connection, vector index, file handle) live in a module-level store keyed by `run_id`, released in **every** terminal node (`finalize`, `force_finalize`, `handle_error`) — prefer a `finally` block so no path can leak the resource.
+Persist `action_history` — it is both the live user-facing trace and the audit log — along with the usage fields. Resources that can't be serialized into state (DB connection, vector index, file handle) live in a module-level store keyed by `run_id`, released in **every** terminal node (`finalize`, `force_finalize`, `handle_error`) — prefer a `finally` block so no path can leak the resource.
 
 ### Spec it before coding
 
-`07-agent-graph.md` must answer, before any node code is written: (1) what action the LLM generates (query, HTTP request, file path, tool call…); (2) the exact FINAL ANSWER string; (3) the recoverable-vs-fatal error boundary; (4) the max-iterations default; (5) what `setup` prepares and how it's cleaned up; (6) what fields `AgentState` carries for history, iteration count, and usage; (7) the **action-safety boundary** — which operations the executor permits, how each action is validated before running, and what sandbox it runs in; (8) what `force_finalize` synthesises when iterations are exhausted. If any are missing, raise a blocker before Phase 2.
+`07-agent-graph.md` must answer, before any node code is written: (1) what action the LLM generates (query, HTTP request, file path, tool call…); (2) the exact FINAL ANSWER string; (3) the recoverable-vs-fatal error boundary; (4) the max-iterations default; (5) what `setup` prepares and how it's cleaned up; (6) what fields `AgentState` carries for history, iteration count, and usage — and how the trace is surfaced to the user live; (7) the **action-safety boundary** — which operations the executor permits, how each action is validated before running, and what sandbox it runs in; (8) what `force_finalize` synthesises when iterations are exhausted. If any are missing, raise a blocker before Phase 2.
 
 ---
 
