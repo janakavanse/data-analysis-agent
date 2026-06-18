@@ -65,8 +65,14 @@ def test_golden_path_ui_flow(db):
 
 For Phase 2 sign-off the agent must **also** start the server with `uv run python -m <pkg>` and hit `/health` plus at least one page with `curl` to prove the app boots in a real process — not only via `TestClient`. Report the curl exit codes in the session log.
 
+## Browser-level end-to-end (client-rendered UI)
+
+`TestClient` returns the server's HTML **before any JavaScript runs**. If the page renders content client-side — interactive charts (Plotly/D3), an SPA, htmx swaps, streamed/typed-out tokens — the HTML assertion above proves the markup was *sent*, not that the user *sees* anything. A `<div class="plotly-chart" data-spec="…">` that `TestClient` confirms is present can still render blank if the chart script throws.
+
+For any UI with client-side rendering, add a browser-driven E2E test (**Playwright is the default** — it works for both Python and Node). Drive a real browser to the page, wait for the element the client script is supposed to build (e.g. the chart's rendered `svg`), and assert the **post-JavaScript** state: the element exists, has visible content (not blank), and **no console error fired** (subscribe to the browser's console events and fail on any error). Run it against the live server, never `TestClient`.
+
 ## Where it lives
 
-- File: `tests/integration/test_pipeline.py` (or a dedicated `test_golden_path.py`)
-- Runs as part of `uv run pytest`
+- Golden-path (server-side): `tests/integration/test_pipeline.py` (or a dedicated `test_golden_path.py`), runs as part of `uv run pytest`
+- Browser E2E (client-side): `tests/e2e/` (`uv run pytest tests/e2e/` or `npx playwright test`)
 - No LLM API key required — uses the stub provider
