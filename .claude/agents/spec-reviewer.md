@@ -28,7 +28,7 @@ You are invoked by the agent-builder after the spec-writer produces a draft, and
 
 If the tech design specifies LangGraph, CrewAI, AutoGen, or any agent orchestration framework, `spec/product/07-agent-graph.md` **must** exist and contain all of the following before the spec is approved:
 
-- [ ] `GenerationState` (or equivalent) fully typed with every field named and typed
+- [ ] `AgentState` (or equivalent) fully typed with every field named and typed
 - [ ] Every node listed with: what it reads from state, what it writes to state, external calls it makes, and how it handles errors
 - [ ] Edge topology diagram (which node connects to which, under what condition)
 - [ ] Error handler node defined (what it does when a fatal error occurs)

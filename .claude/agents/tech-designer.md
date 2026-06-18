@@ -57,13 +57,7 @@ State which you recommend and why.
 
 ### 3. LLM Provider and Model
 
-Which LLM is best for this agent's tasks?
-
-Default: **Anthropic Claude** (`claude-sonnet-4-6`) — strong reasoning, tool use, and long context.
-
-Override if: the project has a specific budget constraint, requires a specialized model, or uses a provider the user already has API access to.
-
-Always use the latest available model. As of the knowledge cutoff: Opus 4.7 (`claude-opus-4-7`), Sonnet 4.6 (`claude-sonnet-4-6`), Haiku 4.5 (`claude-haiku-4-5-20251001`).
+Pick the provider and a specific model from [`spec/engineering/tech-stack.md`](../../spec/engineering/tech-stack.md) § Models — the single source of truth for current model names. Default: **Anthropic Claude** (`claude-sonnet-4-6`) — strong reasoning, tool use, long context. Override for a specific budget, a specialized capability, or a provider the user already has access to.
 
 ### 4. Database
 

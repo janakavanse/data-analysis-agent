@@ -1,140 +1,105 @@
 # Implementation Phases
 
-Agents are built incrementally. This file defines the default phase model. The planner sub-agent adapts it to your specific project.
+Agents are built incrementally. This is the default model; the planner sub-agent adapts it per project.
 
-## Core Principle
-
-**Build the minimal working thing first. Then expand.**
-
-A "working" agent in Phase 2 should demonstrate the core loop end-to-end — even if connections are stubbed, data is hardcoded, and UI is non-existent. Each subsequent phase makes it more real.
-
-## Default Phase Model
-
-The planner sub-agent will customize this for your project, but the general structure is:
-
-### Phase 1 — Domain Models + Data Layer
-- Define all core data types (Pydantic models, TypeScript interfaces, etc.)
-- Set up the database schema (if applicable)
-- No business logic yet
-- **Gate (all must pass):**
-  1. `pyproject.toml` declares the DB driver in `[project.dependencies]` (e.g. `psycopg2-binary` for PostgreSQL) — never dev-only
-  2. `uv run alembic upgrade head` succeeds against the configured database — this must be run and confirmed, not assumed
-  3. Basic CRUD unit tests pass
-  4. Working tree is clean and committed
-
-### Phase 2 — Core Agent Loop (Stubbed)
-- Implement the agent's main loop from start to finish
-- **All external calls are hardcoded stubs — zero real API calls, zero network I/O**
-- LLM calls return a hardcoded string. Search calls return a hardcoded list. File writes use a temp path.
-- The agent must run fully offline. If `pytest` requires an API key to pass, Phase 2 is not done.
-- **Gate (all must pass):**
-  1. Agent runs end-to-end; at least one record written to DB; run status "completed"
-  2. `pytest` passes against the **production DB driver** (e.g. PostgreSQL via psycopg2) — not SQLite
-  3. Tests are fully automated: `conftest.py` creates and tears down the test schema; no manual DB setup steps
-  4. No LLM API key required to pass tests
-  5. **Golden-path UI smoke test passes** (if the project has any UI or HTTP surface). Walks the full primary user flow through `TestClient` AND asserts response content (not only status codes). See `spec/engineering/workflows/golden-path-smoke-test.md`.
-  6. **Live-server smoke:** the agent starts the app (`uv run python -m <pkg>`) and hits `/health` plus one real page with `curl`. Both return 200. Exit codes logged in the session report.
-  7. **Stub mode is visibly labelled:** every rendered page shows a banner when the LLM provider is stubbed, so a human viewer cannot mistake stub output for real AI output.
-  8. **For ReAct-loop agents (Rule #9): the stub simulates at least two iterations** — one where the LLM generates an action, and one where it emits `FINAL ANSWER:`. A stub that returns a final answer on the first call without executing any action does not validate the loop. See `spec/engineering/ai-agents.md` Section 10 for the full pattern.
-  9. **Observability baseline:** every node emits a structured (JSON) log bound to `run_id`; every LLM call records tokens + estimated cost on the run; and the reasoning trace (`action_history`) is surfaced to the user, not just logged. Verifiable in the test DB and log output.
-  10. **Iteration exhaustion routes to `force_finalize`, not `handle_error`.** A test drives the loop past `max_agent_iterations` and asserts a substantive best-effort answer, not a hard failure.
-
-### Phase 3 — First Real Integration
-- Replace the most critical stub with a real external call
-- Typically this is the LLM or the primary data source
-- **Gate:** Agent runs with one real integration; happy path works with real data
-
-### Phase 4 — Error Handling + Resilience
-- Add try/catch, retries, timeouts to all external calls
-- Agent should continue (degraded, not crashed) on non-critical failures
-- **Gate:** Agent handles all documented failure modes without crashing
-
-### Phase 5 — Remaining Integrations
-- Replace remaining stubs with real implementations
-- **Gate:** All integrations are real; agent runs fully end-to-end
-
-### Phase 6 — API / CLI Surface
-- Add the external API or CLI (if the spec calls for it)
-- **Gate:** All specified endpoints/commands work correctly
-
-### Phase 7 — Basic UI (if required)
-- Implement the UI from `spec/product/06-ui.md`
-- Functional but not polished
-- **Gate:** All specified screens/views are present and functional; any client-rendered content (charts, SPA, htmx, streamed updates) is covered by a **browser-level test** (Playwright/equivalent) asserting the post-JavaScript DOM, not just a `TestClient` status check. See `spec/engineering/workflows/golden-path-smoke-test.md`.
-
-### Phase 8 — End-to-End + Integration Tests
-- Write integration tests that exercise the full system
-- Add at least one **full end-to-end test** that drives the whole stack the way a user does (browser → API → agent → DB → back), nothing mocked beyond the LLM stub
-- **Gate:** Integration and E2E tests pass reliably
-
-### Phase 9 — Advanced Observability
-- The structured-logging + token/cost baseline already lands in Phase 2 (see gate item 9). This phase adds aggregation on top: per-run metrics, latency tracking, and — if the spec calls for it — trace export (OpenTelemetry GenAI conventions / an LLM tracing backend).
-- **Gate:** Per-run token, cost, and latency are queryable in aggregate; errors are surfaced with `run_id` context.
-
-### Phase 10 — Polish + Hand-off
-- Fix rough edges, improve error messages, update docs
-- Final drift audit: code matches spec
-- README is accurate and up to date
-- **Gate:** Drift audit passes; README reviewed by user; user accepts hand-off
-
-## Phase Gates
-
-A phase is complete when ALL of the following are true:
-1. All code for the phase is committed and pushed
-2. All tests for the phase pass
-3. Working tree is clean
-4. Session report reflects phase completion
-5. qa-auditor sub-agent (or manual QA checklist) has signed off
-6. For Phase 1 specifically: `alembic upgrade head` has been run against the real DB and succeeded
-
-**Never mark a phase complete if any gate is red.**
-
-**Never claim a phase passes based on tests alone if those tests use a different DB driver than production.** SQLite tests passing does not mean PostgreSQL migrations work.
-
-## Phase Tracking
-
-The current phase is recorded in the active session report and in the git commit messages (`phase-N: [description]`). To see phase history, run `git log --oneline | grep "phase-"`.
-
-## Adapting the Phases
-
-The planner sub-agent may merge, split, or reorder phases based on your project's specifics. For example:
-- A pure CLI tool may skip phases 6 and 7
-- A project with no database may shrink phase 1
-- A project with many integrations may split phase 5 into multiple phases
-
-Whatever the planner decides, the core principle holds: **minimal working thing first**.
+**Core principle: build the minimal working thing first, then expand.** A "working" agent in Phase 2
+demonstrates the core loop end-to-end — even with stubbed connections, hardcoded data, and no UI. Each
+later phase makes it more real.
 
 ---
 
-## Language-Specific Gate Commands
+## Default phase model
 
-The gate test command depends on the project language. The tech-designer sets this in `spec/engineering/tech-stack.md`; the planner uses it in phase definitions.
+### Phase 1 — Domain Models + Data Layer
+Define all core data types; set up the DB schema. No business logic yet.
+**Gate:** (1) `pyproject.toml` declares the DB driver in `[project.dependencies]`, never dev-only;
+(2) `uv run alembic upgrade head` succeeds against the configured DB and `uv run alembic current` shows a
+revision — run and confirmed, not assumed; (3) CRUD unit tests pass; (4) tree clean and committed.
+
+### Phase 2 — Core Agent Loop (Stubbed)
+Implement the agent's full loop start to finish. **All external calls are hardcoded stubs — zero real
+API calls, zero network I/O.** The agent runs fully offline; if `pytest` needs an API key, Phase 2 isn't
+done.
+**Gate:**
+1. Agent runs end-to-end; ≥1 record written to DB; run status `completed`.
+2. `pytest` passes against the production DB driver (→ [`tech-stack.md`](tech-stack.md) § Database & Tests),
+   fully automated via `conftest.py`, **no LLM API key required**.
+3. **Golden-path UI smoke test passes** (if any UI/HTTP surface) — asserts rendered content, not just
+   status codes. → [`workflows/golden-path-smoke-test.md`](workflows/golden-path-smoke-test.md).
+4. **Live-server smoke:** start the app (`uv run python -m <pkg>`), hit `/health` + one real page with
+   `curl`, both 200; log exit codes in the session report.
+5. **Stub mode is visibly labelled** on every page. → [`patterns/llm-providers.md`](patterns/llm-providers.md).
+6. **For ReAct agents:** the stub simulates ≥2 iterations (one action, then `FINAL ANSWER:`), and a test
+   drives the loop past `max_agent_iterations` into `force_finalize` (best-effort answer, not a hard
+   failure). Observability baseline holds — structured per-`run_id` logs, token/cost on the run, and the
+   `action_history` trace surfaced to the user. → [`patterns/react-agent.md`](patterns/react-agent.md).
+
+### Phase 3 — First Real Integration
+Replace the most critical stub (usually the LLM or primary data source) with a real call.
+**Gate:** happy path works with real data.
+
+### Phase 4 — Error Handling + Resilience
+Add try/catch, retries, timeouts to all external calls; degrade rather than crash on non-critical
+failures. **Gate:** all documented failure modes handled without crashing.
+
+### Phase 5 — Remaining Integrations
+Replace remaining stubs. **Gate:** all integrations real; full end-to-end run.
+
+### Phase 6 — API / CLI Surface
+Add the external API or CLI if the spec calls for it. **Gate:** all specified endpoints/commands work.
+
+### Phase 7 — Basic UI (if required)
+Implement the UI from `spec/product/06-ui.md` — functional, not polished.
+**Gate:** all specified screens present and functional; any client-rendered content (charts, SPA, htmx,
+streamed updates) covered by a **browser-level test** asserting the post-JavaScript DOM. →
+[`workflows/golden-path-smoke-test.md`](workflows/golden-path-smoke-test.md).
+
+### Phase 8 — End-to-End + Integration Tests
+Add ≥1 **full end-to-end test** driving the whole stack as a user does (browser → API → agent → DB →
+back), nothing mocked beyond the LLM stub. **Gate:** integration and E2E tests pass reliably.
+
+### Phase 9 — Advanced Observability
+The structured-logging + token/cost baseline already lands in Phase 2. This phase adds aggregation:
+per-run metrics, latency, and — if specified — trace export (OpenTelemetry GenAI / an LLM tracing
+backend). **Gate:** per-run token, cost, and latency are queryable in aggregate; errors carry `run_id`.
+
+### Phase 10 — Polish + Hand-off
+Fix rough edges, improve error messages, update docs. Final drift audit; accurate README.
+**Gate:** drift audit passes; README reviewed by user; user accepts hand-off.
+
+---
+
+## Phase gates
+
+A phase is complete when ALL hold: code committed and pushed · tests pass · tree clean · session report
+updated · qa-auditor (or manual checklist) signed off. For Phase 1 specifically, `alembic upgrade head`
+has been run against the real DB and confirmed.
+
+**Never mark a phase complete with any gate red.** Never claim a pass on tests that use a different DB
+driver than production (→ `tech-stack.md` § Database & Tests).
+
+The current phase is recorded in the active session report and in commit messages (`phase-N: …`);
+`git log --oneline | grep "phase-"` shows the history.
+
+## Adapting the phases
+
+The planner may merge, split, or reorder phases (a pure CLI tool skips 6–7; a no-DB project shrinks 1; a
+multi-integration project splits 5). The core principle holds: **minimal working thing first.**
+
+---
+
+## Language-specific gate commands
+
+The gate command depends on the language; the tech-designer sets it in `tech-stack.md`, the planner uses
+it in phase definitions.
 
 | Language | Phase 1 gate | Phase 2 gate |
 |----------|-------------|-------------|
-| Python | `uv run alembic upgrade head` + `uv run pytest` | `uv run pytest` (PostgreSQL, automated via conftest) |
+| Python | `uv run alembic upgrade head` + `uv run pytest` | `uv run pytest` (prod DB driver, automated via conftest) |
 | TypeScript (Bun) | migration tool + `bun test tests/unit/` | `bun test tests/integration/` |
 | TypeScript (Node) | migration tool + `npx vitest run tests/unit/` | `npx vitest run tests/integration/` |
 | Go | `migrate up` + `go test ./internal/...` | `go test ./...` |
 
-The Phase 2 gate must pass with **no LLM API key set** regardless of language. The DB URL must be set — tests need a real database, they just don't need a real LLM.
-
-Projects with a UI add a browser E2E run on top of the unit/integration gates at Phase 7/8 — `uv run pytest tests/e2e/` (playwright-python) or `npx playwright test` — against the live server.
-
-## TypeScript/Bun Phase 2 Test Pattern
-
-```typescript
-// tests/integration/pipeline.test.ts
-import { describe, it, expect, beforeEach } from "bun:test";
-
-// Use an in-memory or tmp SQLite DB for tests — never real PostgreSQL
-// Stub all external HTTP calls with a simple mock
-
-describe("pipeline", () => {
-  it("runs end-to-end with stubs", async () => {
-    // stub external calls
-    // call runner
-    // assert DB record created with correct status
-  });
-});
-```
+The Phase 2 gate must pass with **no LLM API key set**, regardless of language — the DB URL is set,
+the LLM is stubbed. Projects with a UI add a browser E2E run (`uv run pytest tests/e2e/` or
+`npx playwright test`) against the live server at Phase 7/8.

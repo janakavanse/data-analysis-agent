@@ -82,7 +82,7 @@ Immediately after intake, produce all three artifacts together:
 
 ### 2c — Skeleton Plan (inline)
 For v0.1, the plan is always two phases:
-- **Phase 1:** Domain models + DB schema + repository (all CRUD, passing unit tests)
+- **Phase 1:** Domain models + DB schema (direct SQLAlchemy, no repository pattern) — passing unit tests
 - **Phase 2:** Core agent loop stubbed — full pipeline runs end-to-end, zero real API calls, one record in DB, run status "completed"
 
 Write this plan into `reports/implementation-plan.md`.
@@ -130,8 +130,8 @@ Ask one question via `AskUserQuestion` (Claude Code) or `askQuestions` (Copilot)
 
 Immediately after approval, before writing any application code:
 
-1. **Create and switch to the feature branch** — `git checkout -b feature/<agent-slug>-v0.1`. All application code lives here. **Never commit application code to `main`.** This is a Non-Negotiable rule (see `spec/engineering/ai-agents.md` § Rule 10). If you are on `main` when you reach this step, create the branch now before touching any file.
-2. **Create the project directory** `src/<agent-slug>/` — all code lives here. Never write agent code into the boilerplate root.
+1. **Create and switch to the feature branch** — `git checkout -b feature/<agent-slug>-v0.1`. All application code lives here. **Never commit application code to `main`** (Non-Negotiable 4 in `spec/engineering/ai-agents.md` § 6). If you're on `main` at this step, create the branch before touching any file.
+2. **Create the package directory** `src/<package>/` (snake_case slug) — all code lives here, never in the boilerplate root. See `spec/engineering/project-layout.md`.
 3. **Open a session report** at `reports/sessions/YYYY-MM-DD-HHMMSS-agent-builder.md`. Must exist before Phase 1 begins.
 4. **Create `.env.example`** listing every environment variable with placeholder values.
 5. Fill in the product spec files in `spec/product/` from intake answers.
@@ -151,33 +151,35 @@ After Phase 2 gate passes (skeleton is running):
 
 ## Stage 5 — Build v0.1 (Phases 1 + 2)
 
-Build immediately after scaffold. No gates until QA.
+Build immediately after scaffold. No gates until QA. **Follow `spec/engineering/project-layout.md`
+exactly** and copy reference shapes from `scaffold/`. Full gate definitions live in
+`spec/engineering/phases.md` — don't restate them, run them.
 
-**Follow the standard layout in `spec/engineering/project-layout.md` exactly.**
+### Phase 1 — domain models + schema
+1. Implement `config/settings.py`, `domain/<entity>.py`, `db/models.py`, `db/session.py` — direct
+   SQLAlchemy, **no repository pattern**.
+2. Copy `alembic/script.py.mako` from `scaffold/` (must exist before any alembic command); create
+   `alembic/env.py` + `alembic.ini` (`env.py` reads `DATABASE_URL` from settings, sets
+   `target_metadata = Base.metadata`).
+3. Run the alembic sequence in `project-layout.md` § Phase 1: `revision --autogenerate` → `upgrade head`
+   → `current` (must show a revision, not blank).
+4. Implement `tests/conftest.py` + `tests/unit/db/test_models.py` — same DB driver as production
+   (`tech-stack.md` § Database & Tests); `conftest.py` creates tables via `Base.metadata.create_all`.
+5. Gate: `uv run pytest` passes 100%. Commit: `phase-1: domain models + schema — gate PASSED (N/N tests)`.
 
-### Phase 1
-1. Implement: `config.py`, `domain/models.py`, `db/models.py`, `db/session.py`, `db/repository.py`
-2. Create `alembic/script.py.mako` — use the verbatim template in `spec/engineering/project-layout.md` § "alembic/script.py.mako". **This file must exist before running any alembic command.**
-3. Create `alembic/env.py` and `alembic.ini` — `env.py` must read `DATABASE_URL` from settings and set `target_metadata = Base.metadata`
-4. Run `uv run alembic revision --autogenerate -m "initial"` — this generates `alembic/versions/0001_initial.py`
-5. Run `uv run alembic upgrade head` — applies the migration; tables now exist in PostgreSQL
-6. Verify: `uv run alembic current` must output a revision hash, not blank. Blank = no migration applied = Phase 1 not done.
-7. Implement: `tests/conftest.py`, `tests/unit/db/test_repository.py` — tests use the **same PostgreSQL driver** (psycopg2), not SQLite. `conftest.py` creates tables via `Base.metadata.create_all` against the test DB URL.
-8. Gate: `uv run pytest` must pass 100% against PostgreSQL
-9. Commit: `phase-1: domain models + schema — gate PASSED (N/N tests)`
+### Phase 2 — stubbed agent loop
+1. Implement `tools/*.py` (stubs), `graph/{state,nodes,edges,agent,runner}.py`, `__main__.py`
+   (port 8001), `tests/integration/test_pipeline.py`.
+2. **LLM provider + stubs + stub-mode banner** — follow `spec/engineering/patterns/llm-providers.md`.
+   For a ReAct agent, also follow `spec/engineering/patterns/react-agent.md` (stub simulates ≥2
+   iterations; loop exhaustion → `force_finalize`).
+3. Write `README.md` per `project-layout.md` § README Requirements — setting the API key is the primary
+   path, stub mode the clearly-labelled fallback.
+4. Run the Phase 2 gate in `phases.md`: `uv run pytest` (DB URL set, LLM key NOT required) + golden-path
+   smoke + live-server `curl` check, all green.
+5. Commit: `phase-2: stubbed agent loop + UI + README — gate PASSED (N/N tests)`.
 
-### Phase 2
-1. Implement: `tools/*.py` (stubs), `agent/state.py`, `agent/nodes.py`, `agent/graph.py`, `agent/runner.py`, `__main__.py`, `tests/integration/test_pipeline.py`
-2. **LLM provider layer:** `provider=auto` is the default — resolves to the real provider when the API key env var is set, otherwise to the stub (see `spec/engineering/code-style.md` § "LLM provider selection and stubs"). The user must never need to flip a second flag on top of setting the key.
-3. **Stub correctness:** the stub branches on explicit `<node:plan>` / `<node:draft>` / `<node:title>` tags that the nodes inject into their prompts — never on prose keywords. Stub "draft" output is article-shaped (paragraphs + headings), not a bullet list.
-4. **Stub-mode UI banner:** every rendered page shows a visible banner when the resolved provider is `stub`. Inject `llm_provider` into every template context.
-5. Write `README.md` — setup, how to run, how to run tests. Include `uv run alembic upgrade head` explicitly. Setting the API key is the primary path; stub mode is a fallback clearly labelled in the UI.
-6. **Golden-path UI smoke test** (mandatory if any UI/HTTP surface exists) — walks the full primary user flow via `TestClient` and asserts response **content**, not only status codes. See `spec/engineering/workflows/golden-path-smoke-test.md`.
-7. **Live-server check:** start the app with `uv run python -m <pkg>`, hit `/health` plus at least one real page via `curl`, both 200. Log curl exit codes in the session report.
-8. Gate: `uv run pytest` passes (DB URL set, LLM API key NOT required). Golden-path smoke + live-server check both green.
-9. Commit: `phase-2: stubbed agent loop + UI + README — gate PASSED (N/N tests)`
-
-Announce: "Skeleton is running." Point user to README.
+Announce: "Skeleton is running." Point the user to the README.
 
 ---
 
