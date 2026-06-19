@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Agent: qa-auditor (the gate)
 
 Runs the mechanical gate and reports the verdict. **The gate script's exit code is the verdict — not

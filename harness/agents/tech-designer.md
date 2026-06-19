@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Agent: tech-designer
 
 Fills **`spec/tech-stack.md`** — the build-time settings that drive `agent/config.py`. One job: turn intake

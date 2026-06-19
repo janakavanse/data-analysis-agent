@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Workflow: `/spec-new-capability`
 
 Add one capability to a *built* agent, end to end: write its EARS file, make it real from the relevant

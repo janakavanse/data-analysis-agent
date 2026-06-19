@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Agent: spec-writer
 
 Turns intake answers into the **4-part spec contract** — the single source of truth every later phase

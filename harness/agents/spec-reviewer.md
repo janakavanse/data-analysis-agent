@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Agent: spec-reviewer
 
 Two reviews in one pass: **(1) the spec** — is it coherent, complete, and buildable? — and **(2) the

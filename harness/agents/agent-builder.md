@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Agent: agent-builder (orchestrator)
 
 The master orchestrator. Turns a one-line idea into a working production agent by **generating code from

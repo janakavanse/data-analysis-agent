@@ -1,0 +1,195 @@
+# Pattern: Observability & Evals (Layer 9)
+
+Two halves of "can you trust this run?": **observability** records what happened (every LLM + tool step as
+an OTel-shaped span → SQLite → a built-in `/traces` viewer, no Docker); **evals** judge whether it was
+*right* (OUTCOME + TRAJECTORY), and run as a mechanical gate so a `200` with a wrong answer fails. **Generate
+this fresh at build time**, pinning the *current* `opentelemetry-*` packages if you enable OTLP export
+(check the latest first — a guessed/old version 404s). The code below is proven working; use it verbatim.
+
+## Observability — spans → SQLite → `/traces`
+
+A span is one timed unit of work. We persist them to the `spans` table (`agent/db.py`: `run_id, name,
+kind, attributes(JSON), start_ms, end_ms, duration_ms`) and render them with no JS at `/traces`. The schema
+follows the **OTel GenAI semantic conventions** so the same spans can be exported to any OTLP backend later
+without renaming. Span names:
+
+| Name | Kind | Wraps |
+|------|------|-------|
+| `invoke_agent` | `INTERNAL` | the whole run (`agent/runner.py`) |
+| `chat <model>` | `LLM` | one model call (`agent/graph.py` agent_node) — also captures `usage_metadata` |
+| `execute_tool.<name>` | `TOOL` | one tool call (`agent/graph.py` tools_node) — args + result preview |
+
+### `agent/observability.py` (proven, verbatim)
+```python
+import time, uuid
+from contextlib import asynccontextmanager
+from .db import async_session, Span
+
+@asynccontextmanager
+async def span(run_id: str, name: str, kind: str = "INTERNAL", **attrs):
+    """Time a block, capture exceptions, persist one OTel-GenAI-shaped Span row.
+
+    Yields the mutable `attrs` dict so callers can enrich it in-flight, e.g.
+        async with span(run_id, f"chat {model}", "LLM") as sp:
+            sp["tokens"] = resp.usage_metadata
+    """
+    start = time.time()
+    try:
+        yield attrs
+    except Exception as exc:                      # record then re-raise — never swallow
+        attrs["error"] = f"{type(exc).__name__}: {exc}"
+        raise
+    finally:
+        end = time.time()
+        async with async_session() as s:
+            s.add(Span(
+                id=str(uuid.uuid4()), run_id=run_id, name=name, kind=kind,
+                attributes=attrs,
+                start_ms=int(start * 1000), end_ms=int(end * 1000),
+                duration_ms=int((end - start) * 1000),
+            ))
+            await s.commit()
+```
+The loop calls this around every LLM and tool step — `patterns/react-agent.md`. The mutable yield is the
+whole contract: enrich `sp` in the block (tokens, result preview, args) and it lands in `attributes`.
+
+### The `/traces` viewer — `agent/server.py` (proven, verbatim)
+Server-rendered HTML, no JS, no build step. A timeline of runs; each run lists its spans with a kind color
+badge, a duration bar, attributes, and any error in red. This *is* the audit trail (incl. MCP calls —
+`patterns/tools-and-mcp.md`).
+```python
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import select
+from .db import async_session, init_db, Run, Span
+
+KIND_COLOR = {"INTERNAL": "#6b7280", "LLM": "#2563eb", "TOOL": "#16a34a"}
+
+def _esc(x) -> str:
+    return (str(x).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+@app.get("/", response_class=RedirectResponse)
+async def root():
+    return RedirectResponse("/traces")
+
+@app.get("/traces", response_class=HTMLResponse)
+async def traces():
+    async with async_session() as s:
+        runs = (await s.execute(select(Run).order_by(Run.created_at.desc()))).scalars().all()
+        spans = (await s.execute(select(Span).order_by(Span.start_ms))).scalars().all()
+    by_run: dict[str, list[Span]] = {}
+    for sp in spans:
+        by_run.setdefault(sp.run_id, []).append(sp)
+    rows = []
+    for r in runs:
+        rspans = by_run.get(r.id, [])
+        maxd = max((sp.duration_ms for sp in rspans), default=1) or 1
+        rows.append(f"<h2>{_esc(r.goal)} <small>[{_esc(r.status)}] · {len(rspans)} spans</small></h2>")
+        for sp in rspans:
+            color = KIND_COLOR.get(sp.kind, "#6b7280")
+            bar = max(2, int(200 * sp.duration_ms / maxd))
+            err = sp.attributes.get("error") if isinstance(sp.attributes, dict) else None
+            err_html = f"<div style='color:#dc2626'>{_esc(err)}</div>" if err else ""
+            rows.append(
+                f"<div style='margin:4px 0'>"
+                f"<span style='background:{color};color:#fff;padding:1px 6px;border-radius:4px'>{_esc(sp.kind)}</span> "
+                f"<b>{_esc(sp.name)}</b> "
+                f"<span style='display:inline-block;height:8px;width:{bar}px;background:{color};vertical-align:middle'></span> "
+                f"{sp.duration_ms}ms"
+                f"<pre style='margin:2px 0;color:#374151'>{_esc(sp.attributes)}</pre>{err_html}</div>"
+            )
+    body = "".join(rows) or "<p>No runs yet. POST a goal to /runs.</p>"
+    return f"<html><body style='font-family:system-ui;max-width:900px;margin:2rem auto'><h1>Traces</h1>{body}</body></html>"
+```
+
+### Opt-in OTLP export (later, off by default)
+The viewer needs no infra. When you want spans in an external backend (Grafana/Tempo, Honeycomb, …), add a
+`BatchSpanProcessor` + `OTLPSpanExporter` *alongside* the SQLite write, gated on a setting — never instead
+of it; the gate reads the `spans` table. Pin the current `opentelemetry-sdk` /
+`opentelemetry-exporter-otlp` and set the GenAI resource attributes when you do.
+
+## Evals — outcome + trajectory, run as a gate
+
+Observability shows what happened; **evals decide pass/fail**, fed by the EARS acceptance criteria in
+`spec/capabilities/*.md` ("WHEN <trigger> the system SHALL <response>"). Two axes — both required:
+
+- **OUTCOME** — did it produce the right *answer*? An **LLM-as-judge** scores the final answer against the
+  capability's EARS criterion on a **0–5 scale** using **explicit `evaluation_steps`** (no vibes — the steps
+  are the rubric, so the score is reproducible and inspectable). This catches the `200`-with-a-wrong-answer
+  failure that a status check never will.
+- **TRAJECTORY** — did it get there *correctly*? Read back the persisted spans for the run and assert the
+  path: the expected tool(s) were called with sane args, **no duplicate calls**, **no unsafe/mutating tool
+  fired without its gate** (`patterns/guardrails-and-hitl.md`), `finish` called exactly once, iterations
+  under the cap. The trajectory check needs **no LLM** — it's a deterministic read of the `spans` table.
+
+The runtime judge defaults to the same cheap tier as the product (`spec/tech-stack.md`); for a release gate
+you may pin a stronger judge — keep that choice in the spec, not hard-coded.
+
+### `agent/evals.py` (build-time recipe — pin current libs)
+```python
+from .db import async_session, Span
+from sqlalchemy import select
+from .llm import get_model
+
+JUDGE_PROMPT = """You are a strict grader. Score 0-5 how well the ANSWER satisfies the CRITERION.
+Work through each evaluation step, then output the final integer score on the last line as `SCORE: <n>`.
+
+CRITERION (EARS): {criterion}
+EVALUATION STEPS:
+{steps}
+
+GOAL: {goal}
+ANSWER: {answer}"""
+
+async def outcome_eval(goal, answer, criterion, evaluation_steps, *, threshold=4):
+    """OUTCOME: LLM-judge the answer against one EARS criterion. Returns (passed, score, text)."""
+    steps = "\n".join(f"{i+1}. {s}" for i, s in enumerate(evaluation_steps))
+    msg = JUDGE_PROMPT.format(criterion=criterion, steps=steps, goal=goal, answer=answer)
+    resp = await get_model().ainvoke(msg)          # judge model — cheap tier by default
+    text = resp.content if isinstance(resp.content, str) else str(resp.content)
+    score = next((int(ln.split(":", 1)[1].strip())
+                  for ln in reversed(text.splitlines()) if ln.upper().startswith("SCORE:")), 0)
+    return score >= threshold, score, text
+
+async def trajectory_eval(run_id, *, expect_tools, forbid_tools=()):
+    """TRAJECTORY: deterministic read of the spans table — no LLM. Returns (passed, reasons)."""
+    async with async_session() as s:
+        spans = (await s.execute(
+            select(Span).where(Span.run_id == run_id).order_by(Span.start_ms))).scalars().all()
+    tool_calls = [sp.name.removeprefix("execute_tool.") for sp in spans if sp.kind == "TOOL"]
+    reasons = []
+    for t in expect_tools:
+        if t not in tool_calls:
+            reasons.append(f"missing expected tool: {t}")
+    for t in forbid_tools:
+        if t in tool_calls:
+            reasons.append(f"forbidden/ungated tool fired: {t}")
+    if len(tool_calls) != len(set(tool_calls)):
+        reasons.append(f"duplicate tool calls: {tool_calls}")
+    if any("error" in (sp.attributes or {}) for sp in spans):
+        reasons.append("a span recorded an error")
+    return not reasons, reasons
+```
+EARS criterion → `criterion`; the capability's acceptance bullets → `evaluation_steps` and `expect_tools` /
+`forbid_tools`. One EARS line ⇒ one outcome assertion + one trajectory assertion.
+
+## Gate (this is the gate — run it, don't trust it)
+The demo gate runs a **real** agent run, then *both* evals; a passing status with `score < threshold` or a
+bad trajectory **fails the gate**. → `workflows/gates.md`.
+```python
+async def test_demo_gate():
+    run_id = "gate-1"
+    state = await run_agent("How long do refunds take?", run_id=run_id)   # real run, real model
+    ok_o, score, _ = await outcome_eval(
+        goal="How long do refunds take?", answer=state["answer"],
+        criterion="WHEN asked about refund timing the system SHALL state 5 business days.",
+        evaluation_steps=["Does the answer mention refunds?",
+                          "Does it state 5 business days?",
+                          "Is it free of contradicting timelines?"])
+    ok_t, reasons = await trajectory_eval(run_id, expect_tools=["search_docs"], forbid_tools=["finish"])
+    assert ok_o, f"OUTCOME failed: score {score}"      # a 200 with a wrong answer FAILS here
+    assert ok_t, f"TRAJECTORY failed: {reasons}"
+```
+Wire the deterministic trajectory half into CI with no key (drive `run_agent` with the FakeModel from
+`patterns/react-agent.md`); the LLM-judge outcome half needs a funded `APP_LLM_API_KEY` and runs in the
+demo gate proper.

@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Agent: plan-reviewer
 
 Validates the phased plan the `planner` produced against the spec — **before any code is generated**.

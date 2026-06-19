@@ -1,17 +1,18 @@
-# AI Agents Entry Point (OpenAI Codex / GitHub Copilot)
+<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
 
-Same entry point as CLAUDE.md — read that file for full instructions.
+# Agents — Entry Point (Codex / Copilot / others)
 
-## Quick Start
+**First action: read [`harness/harness.md`](harness/harness.md)** — the operating manual. Then read the
+spec in `spec/` if it is filled in; otherwise run `/build "<your idea>"`.
 
-1. Read `spec/engineering/ai-agents.md` before doing anything else
-2. Check if `spec/product/01-vision.md` is filled in
-   - If not → do not write application code; surface the agent-builder instructions to the user
-   - If yes → read the full spec manifest in CLAUDE.md before writing any code
-3. Open a session report at `reports/sessions/YYYY-MM-DD-HHMMSS-[branch].md`
+## What this repo is
+A frontier spec-driven harness that builds a production agentic AI agent from a spec. A coding agent
+generates the agent fresh from the recipes in `harness/patterns/` (current library versions), gated by
+mechanical checks. Nothing is a frozen app — the harness ships knowledge, not lock-in.
 
-**Intake/approval UI:** For all user-facing questions (intake, approval), always use dynamic question UI (e.g., Copilot’s askQuestions, Claude’s UI) if available. See `.claude/agents/agent-builder.md` for the canonical rule.
+## Map
+- `harness/harness.md` — the rules · `harness/workflows/` — procedures (/build, /deploy, …)
+- `harness/agents/` — sub-agent roles · `harness/patterns/` — the frontier code recipes (all 11 layers)
+- `spec/` — the 4-file input contract you fill · `.githooks/` — mechanical guardrails
 
-## Sub-agents
-
-Sub-agent definitions live in `.claude/agents/` as markdown files. They can be used as system prompts for any AI assistant. The agent-builder is the master orchestrator — start there for a new project.
+A funded `APP_LLM_API_KEY` is required for a real run.

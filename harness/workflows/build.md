@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Workflow: /build
 
 Turn a one-line idea into a working, demo-gated agent. This is the procedure; the rules are

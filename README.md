@@ -1,178 +1,50 @@
-# AI Agent Boilerplate — Spec-Driven, Zero-Shot to Working Agent
+# Spec-driven agent harness
 
-This is a boilerplate for building AI agents spec-first. Give it a one-line idea. Walk away with a working, tested, phased agent.
+A frontier (mid-2026) spec-driven **harness** that builds, maintains, and deploys a production agentic AI
+agent from a short spec. It ships **knowledge, not a frozen app**: precise, copyable pattern recipes that a
+coding agent (like Claude Code) uses to **generate fresh code at build time**, pinning current library
+versions.
 
----
+The target is a Deep-Agent ReAct loop on LangGraph (planning todos, sub-agents with isolated context,
+scratchpad memory) behind async FastAPI + SSE, with typed in-process tools (MCP for external integrations),
+memory, OTel-shaped observability rendered by a built-in `/traces` viewer (no Docker), and outcome +
+trajectory evals run as a mechanical gate.
 
-## What This Is
+## Start
 
-A starting point for anyone who wants to build an AI agent without writing boilerplate from scratch. The repo ships with:
-
-- A structured **spec template** covering product vision, architecture, capabilities, data model, API, and UI
-- An **agent-builder** sub-agent that orchestrates the full build lifecycle
-- Sub-agents for spec writing, reviewing, tech design, planning, and auditing
-- Engineering rules baked into the spec so every AI coding session is consistent
-- Phase-gated implementation — minimal working thing first, then iterative expansion
-
----
-
-## How to Use This
-
-### Step 1 — Clone and configure
-
-```bash
-git clone https://github.com/smallTechOrg/ai-spec-driven-boilerplate.git my-agent
-cd my-agent
-cp .env.example .env
-```
-
-### Step 2 — Open in Claude Code (or any AI coding assistant)
-
-```bash
-claude
-```
-
-### Step 3 — Kick off the agent builder with your idea
+Open this repo in Claude Code and run:
 
 ```
-/build I want an agent that monitors my Shopify store for low-inventory products and automatically drafts restock emails to suppliers
+/build "<your idea>"
 ```
 
-Or just describe your idea naturally — the agent-builder will take it from there.
+Intake asks four questions, fills the 4-file spec, builds the agent, and stops at the demo gate.
 
----
+> A funded **`APP_LLM_API_KEY`** is required for any real run (intake checks for it). The runtime LLM is
+> separate from the coding agent and defaults to a cheap tier — set it in `spec/tech-stack.md`.
 
-## What Happens Next (Fully Automated)
+## Everything else
 
-The **agent-builder** orchestrates this sequence:
+Read **[`harness/harness.md`](harness/harness.md)** — the operating manual (the spec contract, workflows,
+the two model roles, and what "done" means). It points to the rest.
 
-```
-Your idea
-    ↓
-[spec-writer]     → Asks clarifying questions → Drafts product spec
-    ↓
-[spec-reviewer]   → Checks coherence, flags gaps → Requests revisions
-    ↓
-[spec-writer]     → Iterates until spec is complete
-    ↓
-[tech-designer]   → Proposes tech stack, architecture, data model
-    ↓
-You approve the spec & tech design
-    ↓
-[planner]         → Breaks work into phases (minimal → complete)
-    ↓
-[plan-reviewer]   → Validates plan against spec
-    ↓
-Phase 1: Build the minimal working agent (core loop, no polish)
-    ↓
-[qa-auditor]      → Tests phase 1
-    ↓
-Phase 2, 3, ... : Iterate and expand
-    ↓
-[drift-auditor]   → Ensures code matches spec throughout
-    ↓
-Hand-off to you
-```
-
-**Nothing is skipped.** If a phase fails QA, it stays in that phase until it passes.
-
----
-
-## Development Phases (Default Model)
-
-| Phase | What Gets Built |
-|-------|-----------------|
-| 1 | Domain models + data layer |
-| 2 | Core agent loop (no integrations, stubbed tools) |
-| 3 | First real integration (the "happy path" end-to-end) |
-| 4 | Error handling, retries, resilience |
-| 5 | Remaining integrations |
-| 6 | API / CLI surface |
-| 7 | Basic UI (if needed) |
-| 8 | Integration tests |
-| 9 | Observability + logging |
-| 10 | Polish, documentation, hand-off |
-
-Each phase ends with a commit and passes QA before the next phase begins.
-
----
-
-## Repo Layout
+## Layout
 
 ```
-.claude/
-  agents/           ← Sub-agents (agent-builder, spec-writer, etc.)
-  commands/         ← Slash commands (/build, /spec-check, /plan)
-.github/
-  copilot-instructions.md  ← Global Copilot instructions (mandatory spec reads)
-  agents/           ← Copilot agent mode definitions (drift-auditor, planner, etc.)
-  prompts/          ← Slash-style Copilot prompts (/plan, /challenge, /spec-check)
-  instructions/     ← Scoped auto-applied rules (code-style, secret-hygiene, etc.)
-spec/
-  product/          ← What your agent does (fill this in or let spec-writer do it)
-  engineering/      ← How AI agents should write code for this project (immutable rules)
-    workflows/      ← Step-by-step procedures for each agent/workflow type
-reports/
-  sessions/         ← Auto-generated session logs from every AI coding session
-CLAUDE.md           ← Entry point for Claude Code
-AGENTS.md           ← Entry point for OpenAI Codex / GitHub Copilot
-.env.example        ← Environment variable template
+harness/harness.md      the rules — read this first
+harness/workflows/      procedures: /build, /deploy, /maintain, /spec-new-capability
+harness/agents/         sub-agent roles (spec-writer, planner, qa-auditor, …)
+harness/patterns/       the frontier code recipes — all 11 layers (react-agent, tools-and-mcp,
+                        persistence, observability-and-evals, deploy, …)
+harness/generate.py     regenerates the host front-ends (CLAUDE.md, AGENTS.md, .claude/) from harness/
+
+spec/product.md         why / what / success criteria / domain  ┐
+spec/capabilities/*.md  EARS acceptance criteria (feed the evals) │ the 4-file input contract
+spec/agent.md           which agentic layers are on               │ you (or /build) fill
+spec/tech-stack.md      provider · runtime model · DB · deploy · tools  ┘
+
+.githooks/              mechanical guardrails (secrets, branch rules, harness/ drift)
 ```
 
----
-
-## Manually Editing the Spec
-
-If you prefer to write the spec yourself before involving AI:
-
-1. Open `spec/product/01-vision.md` and fill in the placeholders
-2. Work through each file in `spec/product/` in order
-3. Once the spec is complete, run `/plan` to jump straight to the planning phase
-
----
-
-## Rules That AI Agents Follow
-
-Every AI session in this repo follows the rules in `spec/engineering/ai-agents.md`:
-
-- Read the full spec before writing any code
-- Open a session report at `reports/sessions/`
-- Commit every logical unit of work (never accumulate uncommitted changes)
-- One phase at a time — no skipping
-- Write tests before marking a phase complete
-- Update this README whenever the project layout changes
-
----
-
-## FAQ
-
-**Can I use this without Claude Code?**
-Yes. `AGENTS.md` has the same entry point for OpenAI Codex and GitHub Copilot. The sub-agents are plain markdown files.
-
-**What if my agent needs a database?**
-The spec template includes a data model section. The tech-designer sub-agent will recommend the right database for your use case.
-
-**What if I already have a tech stack in mind?**
-Tell the agent-builder upfront: `/build [idea] — use Python + FastAPI + PostgreSQL`. It will skip the tech design Q&A for those decisions.
-
-**What if something breaks?**
-Each phase is resilient by design. The QA auditor will catch failures before the next phase starts. You can always re-run a phase.
-
----
-
-## Test-Branch Workflow
-
-The recommended way to iterate on this boilerplate:
-
-1. Keep `main` as the clean boilerplate — only spec, engineering rules, and agent config.
-2. For each build attempt, create a numbered test branch: `test-1`, `test-2`, etc.
-3. Give the agent-builder a single-line prompt on the test branch. Let it build.
-4. Review and test the result on that branch.
-5. **Never merge the generated application code back to main.** Test branches are disposable.
-6. If a run surfaces a boilerplate improvement (a clearer spec template, a missing rule), cherry-pick or manually apply that fix to `main`.
-
----
-
-## Contributing
-
-This is a boilerplate, not a framework. Improvements to the spec templates, engineering rules, agent definitions, or workflow specs belong on `main`. Generated application code does not.
+`CLAUDE.md`, `AGENTS.md`, `.claude/`, and `.github/agents/` are **generated** from `harness/` — never edit
+them by hand. Edit `harness/` and run `python harness/generate.py`.

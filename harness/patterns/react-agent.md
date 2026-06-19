@@ -1,0 +1,85 @@
+# Pattern: the ReAct Deep-Agent loop (LangGraph)
+
+The agent's control loop. **Generate this fresh at build time**, pinning the *current* `langgraph` /
+`langchain` (check the latest first — a guessed/old version 404s). The code below is proven working.
+
+## Shape
+Nodes: `agent → (tools → agent)* → finalize`. The model is bound to the tools; if it emits tool calls
+they run and the loop continues; when it calls `finish` (or hits the iteration cap) it finalizes.
+
+## Code — `agent/graph.py`
+```python
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.graph import END, START, StateGraph
+from .config import get_settings
+from .observability import span          # patterns/observability-and-evals.md
+from .state import AgentState            # TypedDict: messages, iterations, answer, run_id
+from .tools import FINISH, TOOL_MAP, TOOLS   # patterns/tools-and-mcp.md
+
+def build_graph(model):
+    bound = model.bind_tools(TOOLS)
+    settings = get_settings()
+
+    async def agent_node(state):
+        async with span(state["run_id"], f"chat {settings.llm_model}", "LLM") as sp:
+            resp = await bound.ainvoke(state["messages"])
+            if (u := getattr(resp, "usage_metadata", None)):
+                sp["tokens"] = u
+        return {"messages": state["messages"] + [resp], "iterations": state["iterations"] + 1}
+
+    async def tools_node(state):
+        out = []
+        for tc in state["messages"][-1].tool_calls:
+            if tc["name"] == FINISH:
+                continue
+            tool = TOOL_MAP.get(tc["name"])
+            async with span(state["run_id"], f"execute_tool.{tc['name']}", "TOOL", args=tc["args"]) as sp:
+                result = tool.invoke(tc["args"]) if tool else f"unknown tool: {tc['name']}"
+                sp["result_preview"] = str(result)[:300]
+            out.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
+        return {"messages": state["messages"] + out}
+
+    async def finalize_node(state):
+        last = state["messages"][-1]
+        answer = None
+        for tc in getattr(last, "tool_calls", None) or []:
+            if tc["name"] == FINISH:
+                answer = tc["args"].get("answer")
+        if answer is None:
+            answer = getattr(last, "content", None) or "(no answer produced)"
+        return {"answer": answer}
+
+    def route(state):
+        if state["iterations"] >= settings.max_iterations:
+            return "finalize"                      # force_finalize
+        tcs = getattr(state["messages"][-1], "tool_calls", None)
+        if tcs:
+            return "finalize" if any(t["name"] == FINISH for t in tcs) else "tools"
+        return "finalize"
+
+    g = StateGraph(AgentState)
+    g.add_node("agent", agent_node); g.add_node("tools", tools_node); g.add_node("finalize", finalize_node)
+    g.add_edge(START, "agent")
+    g.add_conditional_edges("agent", route, {"tools": "tools", "finalize": "finalize"})
+    g.add_edge("tools", "agent"); g.add_edge("finalize", END)
+    return g.compile()
+```
+
+## Mandatory mechanics (do not omit)
+- **Termination** — the `finish` tool carries the final answer.
+- **Max-iterations guard + force_finalize** — never loop forever; on cap, finalize a best-effort answer.
+- **Observability** — every LLM + tool step is wrapped in a span → `patterns/observability-and-evals.md`.
+- **Deep-Agent pillars** — add a `write_todos` planning tool; sub-agents + scratchpad memory earn their place.
+
+## Gate (the test that proves it — run it, don't trust it)
+Inject a scripted fake model (no key) that returns a tool call then a `finish`; assert the loop ran ≥2
+iterations, the tool span exists, and a runaway model force-finalizes instead of looping. → `workflows/gates.md`.
+```python
+class FakeModel:
+    def __init__(self, scripted): self.s = list(scripted); self.i = 0
+    def bind_tools(self, tools): return self
+    async def ainvoke(self, msgs):
+        m = self.s[min(self.i, len(self.s) - 1)]; self.i += 1; return m
+# scripted = [AIMessage(content="", tool_calls=[{"name":"search_docs","args":{...},"id":"a"}]),
+#             AIMessage(content="", tool_calls=[{"name":"finish","args":{"answer":"..."},"id":"b"}])]
+```

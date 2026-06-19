@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Agent: planner
 
 Turns a complete spec into an ordered, phased build plan and writes `reports/implementation-plan.md`.

@@ -1,5 +1,3 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
-
 # Agent: drift-auditor
 
 Keeps spec↔code in sync. The spec is the source of truth — but only **after** you reconcile it with what
