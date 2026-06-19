@@ -192,6 +192,14 @@ answer stream in → a link to its trace. The agent's value is the run, not the 
 - **Deep-link the trace:** show `run_id` as a link to `/traces` so a human can inspect the actual steps —
   the UI and the observability layer are the same truth (`patterns/observability-and-evals.md`).
 - **Don't rebuild `/traces`.** The server already renders the timeline; the UI links to it.
+- **One command runs both.** Ship a `make dev` that starts backend **and** UI together
+  (`trap 'kill 0' INT; python -m agent & cd ui && npm run dev`) — Ctrl-C kills both. The user never starts the
+  backend by hand; a UI with a dead backend is the most common "it's broken" report.
+- **Persist the session client-side.** For multi-turn UIs, store `thread_id` (and the active resource id) in
+  `localStorage` so a page reload resumes the same conversation — React state alone resets to a fresh thread
+  on every refresh, which reads to the user as "all my history vanished."
+- **Show cost where the user works.** Surface per-run tokens + cost in the product UI, not only at `/traces`,
+  and keep a running session total visible. Cost you can't see is cost you discover too late.
 
 ### Visualizations — suggest minimal, let the user drive (data / analytics products only)
 Skip this entirely for non-data products. When the product *does* produce charts, do **not** auto-render a
