@@ -8,7 +8,7 @@ entities (agent/domain.py) extend the SAME Base. The user's tabular data is NOT 
 import datetime as dt
 import uuid
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, text
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -29,12 +29,16 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 class Run(Base):
     __tablename__ = "runs"
-    id:         Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    goal:       Mapped[str] = mapped_column(Text)
-    status:     Mapped[str] = mapped_column(String, default="running")        # running|completed|error
-    answer:     Mapped[str | None] = mapped_column(Text, nullable=True)
-    iterations: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    id:            Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    goal:          Mapped[str] = mapped_column(Text)
+    status:        Mapped[str] = mapped_column(String, default="running")        # running|completed|error
+    answer:        Mapped[str | None] = mapped_column(Text, nullable=True)
+    iterations:    Mapped[int] = mapped_column(Integer, default=0)
+    thread_id:     Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    input_tokens:  Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd:      Mapped[float] = mapped_column(Float, default=0.0)
+    created_at:    Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class Message(Base):
@@ -72,3 +76,13 @@ async def init_db() -> None:
     from . import domain  # noqa: F401 — register domain models on Base before create_all
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        for sql in [
+            "ALTER TABLE runs ADD COLUMN thread_id TEXT",
+            "ALTER TABLE runs ADD COLUMN input_tokens INTEGER DEFAULT 0",
+            "ALTER TABLE runs ADD COLUMN output_tokens INTEGER DEFAULT 0",
+            "ALTER TABLE runs ADD COLUMN cost_usd REAL DEFAULT 0.0",
+        ]:
+            try:
+                await conn.execute(text(sql))
+            except Exception:
+                pass  # column already exists

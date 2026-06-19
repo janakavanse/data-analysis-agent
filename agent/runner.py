@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from sqlalchemy import select
 
 from .config import get_settings
-from .db import Message, Run, get_sessionmaker
+from .db import Message, Run, Span, get_sessionmaker
 from .domain import Dataset
 from .graph import build_graph, content_to_text
 from .llm import get_model
@@ -39,12 +39,97 @@ DOMAIN_PROMPT = (
 )
 
 
+async def _sum_llm_tokens(run_id: str) -> tuple[int, int]:
+    """Sum input/output tokens from all LLM spans for this run."""
+    from sqlalchemy import select
+    async with get_sessionmaker()() as s:
+        spans = (await s.execute(
+            select(Span).where(Span.run_id == run_id, Span.kind == "LLM")
+        )).scalars().all()
+    inp = sum((sp.attributes or {}).get("tokens", {}).get("input_tokens", 0) for sp in spans)
+    out = sum((sp.attributes or {}).get("tokens", {}).get("output_tokens", 0) for sp in spans)
+    return inp, out
+
+
+def _calc_cost(inp: int, out: int) -> float:
+    s = get_settings()
+    return round(inp * s.llm_input_cost_per_1m / 1_000_000 + out * s.llm_output_cost_per_1m / 1_000_000, 6)
+
+
+async def _upsert_thread(thread_id: str, dataset_id: str | None, title: str,
+                          inp: int, out: int, cost: float) -> None:
+    from .domain import Thread
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    async with get_sessionmaker()() as s:
+        thread = await s.get(Thread, thread_id)
+        if thread is None:
+            s.add(Thread(
+                id=thread_id, dataset_id=dataset_id,
+                title=title[:120],
+                total_input_tokens=inp, total_output_tokens=out, total_cost_usd=cost,
+                run_count=1,
+            ))
+        else:
+            thread.total_input_tokens += inp
+            thread.total_output_tokens += out
+            thread.total_cost_usd = round(thread.total_cost_usd + cost, 6)
+            thread.run_count += 1
+            thread.last_active_at = now
+        await s.commit()
+
+
+async def _dataset_context(dataset_id: str | None) -> str:
+    """Return a system-message suffix describing the active dataset schema."""
+    if not dataset_id:
+        return ""
+    from . import duck
+    from .domain import Dataset
+    from sqlalchemy import select
+    try:
+        async with get_sessionmaker()() as s:
+            ds = await s.get(Dataset, dataset_id)
+        if not ds:
+            return ""
+        schema = await __import__("asyncio").to_thread(duck.dataset_schema, dataset_id)
+        lines = [f"\nACTIVE DATASET: {ds.name!r} (id={dataset_id})"]
+        lines.append("You have exclusive access to this dataset. Do NOT call list_datasets — use this dataset_id directly.")
+        lines.append("Schema:")
+        for t in schema.get("tables", []):
+            cols = ", ".join(f"{c['name']} ({c['type']})" for c in t["columns"])
+            lines.append(f"  TABLE {t['table']!r}: {cols}")
+            if t.get("sample_rows"):
+                names = [c["name"] for c in t["columns"]]
+                sample = "; ".join(str(dict(zip(names, r))) for r in t["sample_rows"][:2])
+                lines.append(f"    sample: {sample}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 async def _resolve_dataset_id(dataset_id: str | None) -> str | None:
     if dataset_id:
         return dataset_id
     async with get_sessionmaker()() as s:
         row = (await s.execute(select(Dataset).order_by(Dataset.created_at.desc()))).scalars().first()
         return row.id if row else None
+
+
+async def _load_prior_messages(graph, thread_id: str) -> list:
+    """Load prior messages from the thread's checkpoint for multi-turn context."""
+    cp_obj = getattr(graph, "checkpointer", None)
+    if cp_obj is None:
+        return []
+    try:
+        cp = await cp_obj.aget({"configurable": {"thread_id": thread_id}})
+        if cp is None:
+            return []
+        # Checkpoint may be a Checkpoint namedtuple or a raw dict depending on LangGraph version
+        cv = cp.get("channel_values") if isinstance(cp, dict) else getattr(cp, "channel_values", None)
+        if cv:
+            return list(cv.get("messages", []))
+    except Exception:
+        pass
+    return []
 
 
 async def run_agent(
@@ -68,9 +153,20 @@ async def run_agent(
     if graph is None:
         graph = build_graph(model)
 
+    ds_context = await _dataset_context(dataset_id)
+    system_content = DOMAIN_PROMPT + ds_context
+
+    prior_messages = await _load_prior_messages(graph, thread_id)
+    if prior_messages:
+        # Always refresh the system message so the current dataset context is applied.
+        non_sys = [m for m in prior_messages if not isinstance(m, SystemMessage)]
+        new_messages = [SystemMessage(content=system_content)] + non_sys + [HumanMessage(content=goal)]
+    else:
+        new_messages = [SystemMessage(content=system_content), HumanMessage(content=goal)]
+
     state = {
-        "messages": [SystemMessage(content=DOMAIN_PROMPT), HumanMessage(content=goal)],
-        "iterations": 0, "answer": None, "run_id": run_id,
+        "messages": new_messages,
+        "iterations": 0, "answer": None, "chart_spec": None, "run_id": run_id,
     }
     invoke_cfg = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
 
@@ -85,6 +181,9 @@ async def run_agent(
             await s.commit()
         raise
 
+    inp, out = await _sum_llm_tokens(run_id)
+    cost = _calc_cost(inp, out)
+
     async with get_sessionmaker()() as s:
         for m in result["messages"]:
             role = "assistant" if isinstance(m, AIMessage) else getattr(m, "type", "system")
@@ -92,14 +191,22 @@ async def run_agent(
                           content=content_to_text(m.content)))
         run = (await s.execute(select(Run).where(Run.id == run_id))).scalar_one()
         run.status, run.answer, run.iterations = "completed", result["answer"], result["iterations"]
+        run.thread_id = thread_id
+        run.input_tokens, run.output_tokens, run.cost_usd = inp, out, cost
         await s.commit()
+
+    await _upsert_thread(thread_id, dataset_id, goal, inp, out, cost)
 
     return {
         "run_id": run_id,
         "thread_id": thread_id,
         "answer": result["answer"],
+        "chart_spec": result.get("chart_spec"),
         "iterations": result["iterations"],
         "dataset_id": dataset_id,
         "status": "completed",
+        "input_tokens": inp,
+        "output_tokens": out,
+        "cost_usd": cost,
         "messages": result["messages"],
     }

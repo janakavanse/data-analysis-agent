@@ -8,7 +8,7 @@ from playwright.sync_api import expect
 
 
 def test_user_gets_a_grounded_answer(page):
-    page.goto("http://localhost:3000")
+    page.goto("http://localhost:3001")
     page.get_by_role("textbox", name="goal").fill("Which category has the highest total sales?")
     page.get_by_role("button", name="Run").click()
     answer = page.get_by_test_id("answer")

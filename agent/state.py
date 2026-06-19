@@ -13,4 +13,5 @@ class AgentState(TypedDict):
     messages: list[BaseMessage]
     iterations: int
     answer: str | None
+    chart_spec: str | None
     run_id: str

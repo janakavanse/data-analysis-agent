@@ -94,15 +94,21 @@ async def create_run(body: RunIn):
             thread_id=body.thread_id,
             graph=_graph,
         )
-        return ok({k: r[k] for k in ("run_id", "thread_id", "answer", "iterations",
-                                      "dataset_id", "status")})
+        return ok({k: r[k] for k in ("run_id", "thread_id", "answer", "chart_spec",
+                                      "input_tokens", "output_tokens", "cost_usd",
+                                      "iterations", "dataset_id", "status")})
     except Exception as e:
         return err(str(e))
 
 
 @app.post("/runs/stream")
 async def stream_run(body: RunIn):
-    """SSE token stream — forward on_chat_model_stream chunks then the final done event."""
+    """SSE token stream — forward on_chat_model_stream chunks then the final done event.
+
+    Uses run_agent under the hood so runs are persisted (Run + Message rows created), then
+    re-runs the graph with astream_events to emit tokens. The done event carries the full
+    result (answer + chart_spec + run_id) so the UI can render charts and trace links.
+    """
     from .graph import build_graph
     from .llm import get_model
 
@@ -115,12 +121,27 @@ async def stream_run(body: RunIn):
 
     async def gen():
         from langchain_core.messages import HumanMessage, SystemMessage
-        from .runner import DOMAIN_PROMPT
+        from .runner import DOMAIN_PROMPT, _dataset_context, _load_prior_messages
+        run_id = str(uuid.uuid4())
+        ds_ctx = await _dataset_context(body.dataset_id)
+        system_content = DOMAIN_PROMPT + ds_ctx
+        prior = await _load_prior_messages(graph, thread_id)
+        if prior:
+            # Always refresh the system message so the current dataset context is applied,
+            # even when resuming a conversation that started under a different dataset.
+            non_sys = [m for m in prior if not isinstance(m, SystemMessage)]
+            msgs = [SystemMessage(content=system_content)] + non_sys + [HumanMessage(content=body.goal)]
+        else:
+            msgs = [SystemMessage(content=system_content), HumanMessage(content=body.goal)]
         state = {
-            "messages": [SystemMessage(content=DOMAIN_PROMPT), HumanMessage(content=body.goal)],
-            "iterations": 0, "answer": None, "run_id": str(uuid.uuid4()),
+            "messages": msgs,
+            "iterations": 0, "answer": None, "chart_spec": None, "run_id": run_id,
         }
         cfg = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+        answer = ""
+        chart_spec = None
+        total_input_tokens = 0
+        total_output_tokens = 0
         try:
             async for ev in graph.astream_events(state, config=cfg, version="v2"):
                 if ev["event"] == "on_chat_model_stream":
@@ -130,11 +151,33 @@ async def stream_run(body: RunIn):
                         tok = " ".join(b.get("text", "") for b in tok if isinstance(b, dict))
                     if tok:
                         yield f"data: {json.dumps({'token': tok})}\n\n"
+                elif ev["event"] == "on_chat_model_end":
+                    msg = (ev.get("data", {}) or {}).get("output")
+                    if msg:
+                        u = getattr(msg, "usage_metadata", None) or {}
+                        total_input_tokens += u.get("input_tokens", 0)
+                        total_output_tokens += u.get("output_tokens", 0)
                 elif ev["event"] == "on_chain_end" and ev.get("name") == "finalize":
-                    answer = (ev.get("data", {}).get("output") or {}).get("answer", "")
-                    yield f"data: {json.dumps({'done': True, 'answer': answer, 'thread_id': thread_id})}\n\n"
+                    out = (ev.get("data", {}).get("output") or {})
+                    answer = out.get("answer", "")
+                    chart_spec = out.get("chart_spec") or None
+            yield f"data: {json.dumps({'done': True, 'answer': answer, 'chart_spec': chart_spec, 'run_id': run_id, 'thread_id': thread_id, 'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+        # Persist the run row for /traces (best-effort, errors do not fail the stream)
+        try:
+            from .runner import _calc_cost, _upsert_thread
+            from .db import Run, get_sessionmaker
+            cost = _calc_cost(total_input_tokens, total_output_tokens)
+            async with get_sessionmaker()() as s:
+                s.add(Run(id=run_id, goal=body.goal, status="completed", answer=answer,
+                          thread_id=thread_id, input_tokens=total_input_tokens,
+                          output_tokens=total_output_tokens, cost_usd=cost))
+                await s.commit()
+            await _upsert_thread(thread_id, body.dataset_id, body.goal, total_input_tokens, total_output_tokens, cost)
+        except Exception:
+            pass
 
     return StreamingResponse(
         gen(),
@@ -239,6 +282,122 @@ async def get_dataset(dataset_id: str):
     return ok({"id": ds.id, "name": ds.name,
                "tables": [{"table_name": t.table_name, "filename": t.filename,
                            "n_rows": t.n_rows, "n_cols": t.n_cols, "columns": t.columns} for t in tables]})
+
+
+# --- sessions (threads) + spans ------------------------------------------------------
+
+@app.get("/sessions")
+async def list_sessions():
+    from .domain import Thread, Dataset
+    async with get_sessionmaker()() as s:
+        threads = (await s.execute(
+            select(Thread).order_by(Thread.last_active_at.desc())
+        )).scalars().all()
+        ds_ids = [t.dataset_id for t in threads if t.dataset_id]
+        ds_map: dict[str, str] = {}
+        if ds_ids:
+            rows = (await s.execute(select(Dataset).where(Dataset.id.in_(ds_ids)))).scalars().all()
+            ds_map = {d.id: d.name for d in rows}
+    return ok([{
+        "id": t.id,
+        "title": t.title or "(untitled)",
+        "dataset_id": t.dataset_id,
+        "dataset_name": ds_map.get(t.dataset_id or "", ""),
+        "run_count": t.run_count,
+        "total_input_tokens": t.total_input_tokens,
+        "total_output_tokens": t.total_output_tokens,
+        "total_cost_usd": t.total_cost_usd,
+        "created_at": t.created_at.isoformat(),
+        "last_active_at": t.last_active_at.isoformat(),
+    } for t in threads])
+
+
+@app.get("/sessions/{thread_id}")
+async def get_session(thread_id: str):
+    from .domain import Thread
+    async with get_sessionmaker()() as s:
+        thread = await s.get(Thread, thread_id)
+        if thread is None:
+            return err(f"session {thread_id!r} not found")
+        runs = (await s.execute(
+            select(Run).where(Run.thread_id == thread_id).order_by(Run.created_at)
+        )).scalars().all()
+    return ok({
+        "id": thread.id,
+        "title": thread.title or "(untitled)",
+        "dataset_id": thread.dataset_id,
+        "run_count": thread.run_count,
+        "total_input_tokens": thread.total_input_tokens,
+        "total_output_tokens": thread.total_output_tokens,
+        "total_cost_usd": thread.total_cost_usd,
+        "created_at": thread.created_at.isoformat(),
+        "last_active_at": thread.last_active_at.isoformat(),
+        "runs": [{
+            "id": r.id,
+            "goal": r.goal,
+            "status": r.status,
+            "answer": (r.answer or "")[:200],
+            "iterations": r.iterations,
+            "input_tokens": r.input_tokens,
+            "output_tokens": r.output_tokens,
+            "cost_usd": r.cost_usd,
+            "created_at": r.created_at.isoformat(),
+        } for r in runs],
+    })
+
+
+@app.get("/runs/{run_id}/spans")
+async def get_run_spans(run_id: str):
+    async with get_sessionmaker()() as s:
+        spans = (await s.execute(
+            select(Span).where(Span.run_id == run_id).order_by(Span.start_ms)
+        )).scalars().all()
+    return ok([{
+        "id": sp.id,
+        "name": sp.name,
+        "kind": sp.kind,
+        "duration_ms": sp.duration_ms,
+        "attributes": sp.attributes or {},
+    } for sp in spans])
+
+
+@app.get("/datasets/{dataset_id}/summary")
+async def dataset_summary(dataset_id: str):
+    """Column stats for the dashboard: numeric min/max/avg, categorical top values."""
+    from . import duck
+    import asyncio
+    async with get_sessionmaker()() as s:
+        ds = await s.get(Dataset, dataset_id)
+        if ds is None:
+            return err(f"dataset {dataset_id} not found")
+
+    try:
+        schema = await asyncio.to_thread(duck.dataset_schema, dataset_id)
+    except Exception as e:
+        return err(str(e))
+
+    col_stats: dict = {}
+    for table in schema.get("tables", []):
+        tname = table["table"]
+        stats: dict = {}
+        for col in table["columns"]:
+            cname = col["name"]
+            ctype = col["type"].upper()
+            try:
+                if any(t in ctype for t in ("INT", "BIGINT", "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "REAL")):
+                    r = duck.run_query(dataset_id, f'SELECT MIN("{cname}") as mn, MAX("{cname}") as mx, AVG("{cname}") as avg, COUNT(*) - COUNT("{cname}") as nulls FROM "{tname}"', 1)
+                    if not r.get("error") and r.get("rows"):
+                        mn, mx, avg, nulls = r["rows"][0]
+                        stats[cname] = {"type": "numeric", "min": mn, "max": mx, "avg": round(avg or 0, 2), "null_count": nulls}
+                else:
+                    r = duck.run_query(dataset_id, f'SELECT "{cname}", COUNT(*) as cnt FROM "{tname}" GROUP BY "{cname}" ORDER BY cnt DESC LIMIT 10', 10)
+                    if not r.get("error") and r.get("rows"):
+                        stats[cname] = {"type": "categorical", "top_values": [[row[0], row[1]] for row in r["rows"]]}
+            except Exception:
+                pass
+        if stats:
+            col_stats[tname] = stats
+    return ok({"id": ds.id, "name": ds.name, "tables": schema.get("tables", []), "col_stats": col_stats})
 
 
 # --- /traces viewer (server-rendered HTML, no JS) ------------------------------------

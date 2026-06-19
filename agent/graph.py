@@ -4,7 +4,7 @@ agent → (tools → agent)* → finalize. The model is bound to the tools; tool
 continues; on `finish` (or the iteration cap) it finalizes. build_graph takes an optional checkpointer so
 Phase 3 (multi-turn) can compile with one — one new kwarg, nothing else changes.
 """
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolMessage, AIMessage as _AIMessage
 from langgraph.graph import END, START, StateGraph
 
 from .config import get_settings
@@ -61,12 +61,45 @@ def build_graph(model, checkpointer=None):
     async def finalize_node(state):
         last = state["messages"][-1]
         answer = None
+        chart_spec = None
+
+        # Happy path: last message has an explicit finish tool call
         for tc in getattr(last, "tool_calls", None) or []:
             if tc["name"] == FINISH:
                 answer = tc["args"].get("answer")
+                chart_spec = tc["args"].get("chart_spec") or None
+
+        # Force-finalize path (iteration cap hit): scan backwards for any finish call
+        if answer is None:
+            for msg in reversed(state["messages"][:-1]):
+                for tc in getattr(msg, "tool_calls", None) or []:
+                    if tc["name"] == FINISH and tc["args"].get("answer"):
+                        answer = tc["args"]["answer"]
+                        chart_spec = tc["args"].get("chart_spec") or None
+                        break
+                if answer is not None:
+                    break
+
+        # Fall back to last AIMessage text content (may be empty on Gemini when tool_calls present)
         if answer is None:
             answer = getattr(last, "content", None)
-        return {"answer": content_to_text(answer) or "(no answer produced)"}
+
+        # Last resort: summarise the last tool result so the user gets partial information
+        if not content_to_text(answer):
+            last_tool = next(
+                (m for m in reversed(state["messages"]) if isinstance(m, ToolMessage) and m.content),
+                None,
+            )
+            if last_tool:
+                answer = (
+                    "I gathered the following data but ran out of steps to complete the analysis:\n\n"
+                    + last_tool.content
+                )
+
+        return {
+            "answer": content_to_text(answer) or "(analysis incomplete — no data retrieved)",
+            "chart_spec": chart_spec,
+        }
 
     def route(state):
         if state["iterations"] >= settings.max_iterations:

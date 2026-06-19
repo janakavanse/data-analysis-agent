@@ -6,10 +6,24 @@ conversation_turns (Phase 3) join here later.
 """
 import datetime as dt
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base, _now, _uuid
+
+
+class Thread(Base):
+    """A conversation session tied to one dataset."""
+    __tablename__ = "threads"
+    id:                   Mapped[str] = mapped_column(String, primary_key=True)  # = thread_id from client
+    dataset_id:           Mapped[str | None] = mapped_column(String, nullable=True)
+    title:                Mapped[str] = mapped_column(String, default="")
+    total_input_tokens:   Mapped[int] = mapped_column(Integer, default=0)
+    total_output_tokens:  Mapped[int] = mapped_column(Integer, default=0)
+    total_cost_usd:       Mapped[float] = mapped_column(Float, default=0.0)
+    run_count:            Mapped[int] = mapped_column(Integer, default=0)
+    created_at:           Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_active_at:       Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class Dataset(Base):
