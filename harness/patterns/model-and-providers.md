@@ -25,6 +25,7 @@ always on, opt-in refusal fallbacks). Always confirm IDs at build time.
 ## Code — `agent/config.py`
 Settings via pydantic-settings, env prefix `APP_`. The runtime model defaults CHEAP.
 ```python
+from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -36,7 +37,8 @@ class Settings(BaseSettings):
     port: int = 8001
     max_iterations: int = 6
 
-def get_settings() -> Settings:
+@lru_cache
+def get_settings() -> Settings:                      # cached Settings singleton — the one config accessor
     return Settings()
 ```
 

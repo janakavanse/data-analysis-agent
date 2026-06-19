@@ -70,9 +70,13 @@ class Span(Base):
     created_at:  Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
-_settings = get_settings()
-engine = create_async_engine(_settings.database_url)
-async_session = async_sessionmaker(engine, expire_on_commit=False)
+engine = create_async_engine(get_settings().database_url)
+_sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+
+
+def get_sessionmaker() -> async_sessionmaker:
+    """The one session accessor. Callers do: `async with get_sessionmaker()() as s: ...; await s.commit()`."""
+    return _sessionmaker
 
 
 async def init_db() -> None:
@@ -81,7 +85,9 @@ async def init_db() -> None:
 ```
 
 `expire_on_commit=False` so objects stay usable after `commit()` (you read `.answer` post-write without a
-reload). `init_db()` is wired into the FastAPI lifespan (`agent/server.py`) so tables exist on boot.
+reload). `get_sessionmaker()` returns the `async_sessionmaker`; every recipe opens a session with
+`async with get_sessionmaker()() as s:` and commits explicitly. `init_db()` is wired into the FastAPI
+lifespan (`agent/server.py`) so tables exist on boot. `db.py` exports `get_sessionmaker` and `init_db`.
 
 ## The three core tables — the agent's flight recorder
 - **`runs`** — one row per `POST /runs`. The unit of work: goal in, answer + status + iteration count out.
@@ -116,15 +122,15 @@ class Ticket(Base):                 # example: a support agent's domain noun
 
 Rules: **one `Base`** (a second one means tables your `init_db()` never creates); reference `runs.id` so
 domain data joins back to the run that produced it; index your foreign keys. Tools that write domain rows are
-plain in-process `@tool`s using the same `async_session` (`patterns/tools-and-mcp.md`).
+plain in-process `@tool`s using the same `get_sessionmaker()` (`patterns/tools-and-mcp.md`).
 
 ### Writing rows — the session pattern
 ```python
-from .db import async_session
+from .db import get_sessionmaker
 from .domain import Ticket
 
 async def open_ticket(run_id: str, subject: str, body: str) -> str:
-    async with async_session() as session:
+    async with get_sessionmaker()() as session:
         t = Ticket(run_id=run_id, subject=subject, body=body)
         session.add(t)
         await session.commit()      # async all the way down — never a sync driver

@@ -94,7 +94,7 @@ arguments at build time; the runner below is constant.
 # agent/gate_eval.py — exit 0 iff the run's answer is right AND the path is sane.
 import argparse, asyncio, sys
 from sqlalchemy import select
-from .db import async_session, Run
+from .db import get_sessionmaker, Run
 from .evals import outcome_eval, trajectory_eval
 
 # Filled from the spec at build time (one block per capability under test).
@@ -106,7 +106,7 @@ EXPECT_TOOLS = ["search_docs"]
 FORBID_TOOLS = []                       # e.g. mutating tools that must not fire ungated
 
 async def main(run_id: str, goal: str) -> int:
-    async with async_session() as s:
+    async with get_sessionmaker()() as s:
         run = (await s.execute(select(Run).where(Run.id == run_id))).scalar_one()
     ok_o, score, _ = await outcome_eval(goal, run.answer, CRITERION, EVALUATION_STEPS)
     ok_t, reasons = await trajectory_eval(run_id, expect_tools=EXPECT_TOOLS, forbid_tools=FORBID_TOOLS)

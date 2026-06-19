@@ -23,7 +23,7 @@ without renaming. Span names:
 ```python
 import time, uuid
 from contextlib import asynccontextmanager
-from .db import async_session, Span
+from .db import get_sessionmaker, Span
 
 @asynccontextmanager
 async def span(run_id: str, name: str, kind: str = "INTERNAL", **attrs):
@@ -41,7 +41,7 @@ async def span(run_id: str, name: str, kind: str = "INTERNAL", **attrs):
         raise
     finally:
         end = time.time()
-        async with async_session() as s:
+        async with get_sessionmaker()() as s:
             s.add(Span(
                 id=str(uuid.uuid4()), run_id=run_id, name=name, kind=kind,
                 attributes=attrs,
@@ -53,54 +53,15 @@ async def span(run_id: str, name: str, kind: str = "INTERNAL", **attrs):
 The loop calls this around every LLM and tool step — `patterns/react-agent.md`. The mutable yield is the
 whole contract: enrich `sp` in the block (tokens, result preview, args) and it lands in `attributes`.
 
-### The `/traces` viewer — `agent/server.py` (proven, verbatim)
-Server-rendered HTML, no JS, no build step. A timeline of runs; each run lists its spans with a kind color
-badge, a duration bar, attributes, and any error in red. This *is* the audit trail (incl. MCP calls —
+### The `/traces` viewer lives in `patterns/interface.md`
+The `/traces` viewer (server-rendered HTML, no JS, no build step — a timeline of runs, each span with a
+kind-color badge, duration bar, attributes, and any error in red) is part of the self-contained
+`agent/server.py` recipe in **`patterns/interface.md`**, where `app = FastAPI(...)` is defined alongside
+the `/health`, `POST /runs`, and `/traces` routes plus the small HTML render helper. **This recipe owns the
+span emission (the `span()` context manager above) + the evals below**; it does not redefine the viewer.
+The viewer reads the `spans` rows this recipe writes — `KIND_COLOR` maps the three kinds emitted here:
+`INTERNAL` (the top run span), `LLM`, `TOOL`. This *is* the audit trail (incl. MCP calls —
 `patterns/tools-and-mcp.md`).
-```python
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
-from .db import async_session, init_db, Run, Span
-
-KIND_COLOR = {"INTERNAL": "#6b7280", "LLM": "#2563eb", "TOOL": "#16a34a"}
-
-def _esc(x) -> str:
-    return (str(x).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
-
-@app.get("/", response_class=RedirectResponse)
-async def root():
-    return RedirectResponse("/traces")
-
-@app.get("/traces", response_class=HTMLResponse)
-async def traces():
-    async with async_session() as s:
-        runs = (await s.execute(select(Run).order_by(Run.created_at.desc()))).scalars().all()
-        spans = (await s.execute(select(Span).order_by(Span.start_ms))).scalars().all()
-    by_run: dict[str, list[Span]] = {}
-    for sp in spans:
-        by_run.setdefault(sp.run_id, []).append(sp)
-    rows = []
-    for r in runs:
-        rspans = by_run.get(r.id, [])
-        maxd = max((sp.duration_ms for sp in rspans), default=1) or 1
-        rows.append(f"<h2>{_esc(r.goal)} <small>[{_esc(r.status)}] · {len(rspans)} spans</small></h2>")
-        for sp in rspans:
-            color = KIND_COLOR.get(sp.kind, "#6b7280")
-            bar = max(2, int(200 * sp.duration_ms / maxd))
-            err = sp.attributes.get("error") if isinstance(sp.attributes, dict) else None
-            err_html = f"<div style='color:#dc2626'>{_esc(err)}</div>" if err else ""
-            rows.append(
-                f"<div style='margin:4px 0'>"
-                f"<span style='background:{color};color:#fff;padding:1px 6px;border-radius:4px'>{_esc(sp.kind)}</span> "
-                f"<b>{_esc(sp.name)}</b> "
-                f"<span style='display:inline-block;height:8px;width:{bar}px;background:{color};vertical-align:middle'></span> "
-                f"{sp.duration_ms}ms"
-                f"<pre style='margin:2px 0;color:#374151'>{_esc(sp.attributes)}</pre>{err_html}</div>"
-            )
-    body = "".join(rows) or "<p>No runs yet. POST a goal to /runs.</p>"
-    return f"<html><body style='font-family:system-ui;max-width:900px;margin:2rem auto'><h1>Traces</h1>{body}</body></html>"
-```
 
 ### Opt-in OTLP export (later, off by default)
 The viewer needs no infra. When you want spans in an external backend (Grafana/Tempo, Honeycomb, …), add a
@@ -127,7 +88,7 @@ you may pin a stronger judge — keep that choice in the spec, not hard-coded.
 
 ### `agent/evals.py` (build-time recipe — pin current libs)
 ```python
-from .db import async_session, Span
+from .db import get_sessionmaker, Span
 from sqlalchemy import select
 from .llm import get_model
 
@@ -153,7 +114,7 @@ async def outcome_eval(goal, answer, criterion, evaluation_steps, *, threshold=4
 
 async def trajectory_eval(run_id, *, expect_tools, forbid_tools=()):
     """TRAJECTORY: deterministic read of the spans table — no LLM. Returns (passed, reasons)."""
-    async with async_session() as s:
+    async with get_sessionmaker()() as s:
         spans = (await s.execute(
             select(Span).where(Span.run_id == run_id).order_by(Span.start_ms))).scalars().all()
     tool_calls = [sp.name.removeprefix("execute_tool.") for sp in spans if sp.kind == "TOOL"]

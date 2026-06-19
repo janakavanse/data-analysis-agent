@@ -4,9 +4,9 @@ How the agent reaches the outside world: an async FastAPI app exposing `/health`
 built-in `/traces` viewer. **Generate this fresh at build time**, pinning the *current* `fastapi` /
 `uvicorn` (check the latest first — a guessed/old version 404s). The code below is proven working.
 
-The graph and loop come from `patterns/react-agent.md`; spans + the `/traces` HTML from
+The graph and loop come from `patterns/react-agent.md`; the span emission feeding the viewer from
 `patterns/observability-and-evals.md`; the runtime model from `patterns/model-and-providers.md`. This
-recipe is only the serving edge.
+recipe owns the serving edge **and** the self-contained `/traces` viewer (one runnable `server.py`).
 
 ## Contract
 - `GET /health` → `{"ok": true}` — the liveness probe the demo gate hits.
@@ -23,7 +23,7 @@ import uuid
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from sqlalchemy import select
 from .config import get_settings
-from .db import Message, Run, session_scope
+from .db import Message, Run, get_sessionmaker
 from .graph import build_graph
 from .llm import get_model
 from .observability import span
@@ -37,37 +37,44 @@ async def run_agent(goal: str, model=None, run_id: str | None = None) -> dict:
     run_id = run_id or uuid.uuid4().hex
     model = model or get_model()
 
-    async with session_scope() as s:
+    async with get_sessionmaker()() as s:
         s.add(Run(id=run_id, goal=goal, status="running", iterations=0))
+        await s.commit()
 
     graph = build_graph(model)
     state = {
         "messages": [SystemMessage(content=DOMAIN_PROMPT), HumanMessage(content=goal)],
         "iterations": 0, "answer": None, "run_id": run_id,
     }
-    async with span(run_id, "invoke_agent", "AGENT", goal=goal):
+    async with span(run_id, "invoke_agent", "INTERNAL", goal=goal):
         result = await graph.ainvoke(state, config={"recursion_limit": 50})
 
-    async with session_scope() as s:
+    async with get_sessionmaker()() as s:
         for m in result["messages"]:
             role = "assistant" if isinstance(m, AIMessage) else getattr(m, "type", "system")
             content = m.content if isinstance(m.content, str) else str(m.content)
             s.add(Message(id=uuid.uuid4().hex, run_id=run_id, role=role, content=content))
         run = (await s.execute(select(Run).where(Run.id == run_id))).scalar_one()
         run.status, run.answer, run.iterations = "completed", result["answer"], result["iterations"]
+        await s.commit()
 
-    return {"run_id": run_id, "answer": result["answer"], "iterations": result["iterations"]}
+    return {"run_id": run_id, "answer": result["answer"],
+            "iterations": result["iterations"], "messages": result["messages"]}
 ```
 
-## Code — `agent/server.py` (proven, verbatim)
+## Code — `agent/server.py` (proven, verbatim — self-contained, the `/traces` viewer lives here)
+The whole serving edge in one runnable file: `app = FastAPI(lifespan=...)` plus `/health`, `POST /runs`,
+and the inline `/traces` viewer (server-rendered HTML, no JS — `_traces_html` is the small helper). The
+span emission feeding this viewer is owned by `patterns/observability-and-evals.md`; the rendering lives
+here. `KIND_COLOR` maps the three span kinds the loop emits: `INTERNAL` (top run span), `LLM`, `TOOL`.
 ```python
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
-from .db import init_db
+from sqlalchemy import select
+from .db import get_sessionmaker, init_db, Run, Span
 from .runner import run_agent
-from .traces_view import render_traces      # patterns/observability-and-evals.md
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -89,7 +96,7 @@ async def health():
 @app.post("/runs")
 async def create_run(body: RunIn):
     try:
-        return ok(await run_agent(body.goal))
+        return ok(await run_agent(body.goal))   # run_agent returns a dict — serialized straight into ok()
     except Exception as e:                    # surface key/model failures as JSON, not a 500 stacktrace
         return err(str(e))
 
@@ -97,9 +104,42 @@ async def create_run(body: RunIn):
 async def root():
     return RedirectResponse("/traces")
 
+KIND_COLOR = {"INTERNAL": "#6b7280", "LLM": "#2563eb", "TOOL": "#16a34a"}
+
+def _esc(x) -> str:
+    return str(x).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+async def _traces_html() -> str:
+    async with get_sessionmaker()() as s:
+        runs = (await s.execute(select(Run).order_by(Run.created_at.desc()))).scalars().all()
+        spans = (await s.execute(select(Span).order_by(Span.start_ms))).scalars().all()
+    by_run: dict[str, list[Span]] = {}
+    for sp in spans:
+        by_run.setdefault(sp.run_id, []).append(sp)
+    rows = []
+    for r in runs:
+        rspans = by_run.get(r.id, [])
+        maxd = max((sp.duration_ms for sp in rspans), default=1) or 1
+        rows.append(f"<h2>{_esc(r.goal)} <small>[{_esc(r.status)}] · {len(rspans)} spans</small></h2>")
+        for sp in rspans:
+            color = KIND_COLOR.get(sp.kind, "#6b7280")
+            bar = max(2, int(200 * sp.duration_ms / maxd))
+            err_attr = sp.attributes.get("error") if isinstance(sp.attributes, dict) else None
+            err_html = f"<div style='color:#dc2626'>{_esc(err_attr)}</div>" if err_attr else ""
+            rows.append(
+                f"<div style='margin:4px 0'>"
+                f"<span style='background:{color};color:#fff;padding:1px 6px;border-radius:4px'>{_esc(sp.kind)}</span> "
+                f"<b>{_esc(sp.name)}</b> "
+                f"<span style='display:inline-block;height:8px;width:{bar}px;background:{color};vertical-align:middle'></span> "
+                f"{sp.duration_ms}ms"
+                f"<pre style='margin:2px 0;color:#374151'>{_esc(sp.attributes)}</pre>{err_html}</div>"
+            )
+    body = "".join(rows) or "<p>No runs yet. POST a goal to /runs.</p>"
+    return f"<html><body style='font-family:system-ui;max-width:900px;margin:2rem auto'><h1>Traces</h1>{body}</body></html>"
+
 @app.get("/traces", response_class=HTMLResponse)
 async def traces():
-    return await render_traces()             # server-rendered HTML, no JS
+    return await _traces_html()              # server-rendered HTML, no JS
 ```
 
 ## Code — `agent/__main__.py` (proven, verbatim)

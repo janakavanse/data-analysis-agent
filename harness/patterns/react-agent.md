@@ -7,6 +7,24 @@ The agent's control loop. **Generate this fresh at build time**, pinning the *cu
 Nodes: `agent → (tools → agent)* → finalize`. The model is bound to the tools; if it emits tool calls
 they run and the loop continues; when it calls `finish` (or hits the iteration cap) it finalizes.
 
+## Code — `agent/state.py`
+```python
+from langchain_core.messages import BaseMessage
+from typing import TypedDict
+
+class AgentState(TypedDict):
+    messages: list[BaseMessage]    # see the WARNING below — NO add_messages reducer
+    iterations: int
+    answer: str | None
+    run_id: str
+```
+
+> **⚠️ `messages` must be a PLAIN `list[BaseMessage]` — do NOT use `Annotated[list, add_messages]`.**
+> The nodes in `graph.py` return the **full updated list themselves** (`state["messages"] + [resp]`), so a
+> LangGraph `add_messages` reducer would **append on top of an already-complete list and double-append**,
+> corrupting the transcript (and the `/traces` history). Keep `AgentState` a plain `TypedDict`; the nodes own
+> the merge. This is the single gap most likely to silently break a build — do not "helpfully" add a reducer.
+
 ## Code — `agent/graph.py`
 ```python
 from langchain_core.messages import AIMessage, ToolMessage
@@ -80,6 +98,8 @@ class FakeModel:
     def bind_tools(self, tools): return self
     async def ainvoke(self, msgs):
         m = self.s[min(self.i, len(self.s) - 1)]; self.i += 1; return m
-# scripted = [AIMessage(content="", tool_calls=[{"name":"search_docs","args":{...},"id":"a"}]),
+# Replace "<your_tool>" with one of YOUR agent's tool names (from patterns/tools-and-mcp.md) — it is a
+# placeholder, NOT a required tool:
+# scripted = [AIMessage(content="", tool_calls=[{"name":"<your_tool>","args":{...},"id":"a"}]),
 #             AIMessage(content="", tool_calls=[{"name":"finish","args":{"answer":"..."},"id":"b"}])]
 ```

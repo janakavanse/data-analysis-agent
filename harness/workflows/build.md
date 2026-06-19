@@ -81,8 +81,8 @@ proven, copyable code — generate from them. The Phase-1 spine (the walking ske
 
 | Module | Recipe | Carries |
 |--------|--------|---------|
-| `agent/config.py` | `patterns/model-and-providers.md` | `Settings` (env prefix `APP_`, cheap runtime model) |
-| `agent/db.py` | `patterns/persistence.md` | async SQLAlchemy 2.0; `Run` / `Message` / `Span`; `init_db()` |
+| `agent/config.py` | `patterns/model-and-providers.md` | `get_settings()` (cached `Settings`, env prefix `APP_`, cheap runtime model) |
+| `agent/db.py` | `patterns/persistence.md` | async SQLAlchemy 2.0; `Run` / `Message` / `Span`; `get_sessionmaker()` + `init_db()` |
 | `agent/observability.py` | `patterns/observability-and-evals.md` | `span()` ctx mgr → `Span` rows (OTel GenAI names) |
 | `agent/llm.py` | `patterns/model-and-providers.md` | `get_model()` (raises without `APP_LLM_API_KEY`) |
 | `agent/tools.py` | `patterns/tools-and-mcp.md` | `@tool`s incl. `write_todos`, `finish`; `TOOLS`/`TOOL_MAP` |
@@ -94,6 +94,7 @@ The fixed contract every build satisfies — `config.py` and `runner.py` are loa
 
 ```python
 # agent/config.py
+from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -105,26 +106,28 @@ class Settings(BaseSettings):
     port: int = 8001
     max_iterations: int = 6
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:                      # cached singleton — every recipe imports this
+    return Settings()
 ```
 
 ```python
 # agent/runner.py — create Run, run the graph under a top span, persist messages + outcome
 import uuid
 from langchain_core.messages import SystemMessage, HumanMessage
-from .config import settings
-from .db import async_session, Run, Message
+from .config import get_settings
+from .db import get_sessionmaker, Run, Message
 from .graph import build_graph
 from .llm import get_model
 from .observability import span
 
 DOMAIN_PROMPT = "..."  # spec/product.md § Domain instructions
 
-async def run_agent(goal: str, model=None, run_id: str | None = None) -> Run:
+async def run_agent(goal: str, model=None, run_id: str | None = None) -> dict:
     run_id = run_id or str(uuid.uuid4())
     model = model or get_model()
     graph = build_graph(model)
-    async with async_session() as s:
+    async with get_sessionmaker()() as s:
         run = Run(id=run_id, goal=goal, status="running")
         s.add(run); await s.commit()
     state = {
@@ -133,14 +136,15 @@ async def run_agent(goal: str, model=None, run_id: str | None = None) -> Run:
     }
     async with span(run_id, "invoke_agent", kind="INTERNAL", goal=goal):
         final = await graph.ainvoke(state, config={"recursion_limit": 50})
-    async with async_session() as s:
+    async with get_sessionmaker()() as s:
         for m in final["messages"]:
             s.add(Message(id=str(uuid.uuid4()), run_id=run_id,
                           role=m.type, content=str(m.content)))
         run = await s.get(Run, run_id)
         run.status, run.answer, run.iterations = "completed", final.get("answer"), final["iterations"]
         await s.commit()
-        return run
+    return {"run_id": run_id, "answer": final.get("answer"),
+            "iterations": final["iterations"], "messages": final["messages"]}
 ```
 
 Build only what the spec needs — no gold-plating (`agent-builder.md`).
