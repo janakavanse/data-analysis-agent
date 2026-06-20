@@ -1,9 +1,7 @@
-import io
+import re
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
-
-import pandas as pd
 
 current_session_id: ContextVar[str | None] = ContextVar("current_session_id", default=None)
 
@@ -25,14 +23,16 @@ def release_session(session_id: str) -> None:
     _SESSIONS.pop(session_id, None)
 
 
+def _chunk(text: str) -> list[str]:
+    """Split a document into passages on blank lines (fallback: the whole text)."""
+    chunks = [c.strip() for c in re.split(r"\n\s*\n", text) if c.strip()]
+    return chunks or [text.strip()]
+
+
 def load_resource(session_id: str, data: str, resource_id: str = "main") -> str:
-    """Parse an uploaded blob (CSV or JSON) and stash the DataFrame in the session bag."""
-    try:
-        df = pd.read_csv(io.StringIO(data))
-    except Exception:
-        try:
-            df = pd.read_json(io.StringIO(data))
-        except Exception as e:
-            raise ValueError(f"Could not parse data as CSV or JSON: {e}") from e
-    get_session(session_id).by_id[resource_id] = df
+    """Stash a provided document (plain text) + its passages in the session bag for retrieval.
+    Persists across follow-up turns; released only on explicit session delete (C-SESSION-SCOPE)."""
+    sess = get_session(session_id)
+    sess.by_id["document"] = data
+    sess.by_id["chunks"] = _chunk(data)
     return resource_id

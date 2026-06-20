@@ -1,7 +1,7 @@
 PORT     := 8001
-GOAL     := "What is the average salary?"
-FOLLOWUP := "What is the maximum age in the dataset?"
-DATA_FILE := scripts/fixtures/sample_data.csv
+GOAL     := "How many paid vacation days do full-time employees get per year?"
+FOLLOWUP := "How far in advance must I request time off?"
+DATA_FILE := scripts/fixtures/handbook.txt
 
 .PHONY: setup dev gate demo-gate
 
@@ -15,4 +15,4 @@ dev:
 gate: demo-gate
 
 demo-gate:
-	DATA_FILE=$(DATA_FILE) bash scripts/demo_gate.sh
+	GOAL=$(GOAL) FOLLOWUP=$(FOLLOWUP) DATA_FILE=$(DATA_FILE) bash scripts/demo_gate.sh

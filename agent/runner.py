@@ -7,24 +7,20 @@ from .graph import build_graph
 from .llm import get_model
 from .observability import span
 
-DOMAIN_PROMPT = """You are a data analysis agent. Help users analyze their uploaded CSV or JSON files using Python/pandas.
+DOMAIN_PROMPT = """You are a grounded assistant. Answer the user's question using ONLY information found in the document provided for this session.
 
-Steps for EVERY question (do them in order, exactly once each):
-1. Call write_todos with your plan.
-2. Call file_load() to inspect the data (columns, types, sample rows).
-3. Call python_exec(code) ONCE with ONE expression that computes the COMPLETE answer. For multi-column questions use df.mean(numeric_only=True) or df.describe() — do NOT call python_exec multiple times.
-4. Call finish(answer) immediately. ALWAYS format your answer as:
-   The result is: <answer text>
-   ```python
-   <the exact expression you used>
-   ```
+For EVERY question, in order (each step exactly once):
+1. Call write_todos with a one-line plan.
+2. Call search_document(query) to retrieve the relevant passages.
+3. Call finish(answer). Base the answer ONLY on the retrieved passages and quote the supporting sentence. Format:
+   <your answer>
+
+   Source: "<the exact supporting sentence from the document>"
 
 Rules:
-- python_exec accepts ONLY a single expression. No multi-line code, no imports, no assignments.
-- ONE python_exec call per question. Cover all parts in that one call.
-- Call finish IMMEDIATELY after python_exec — never ask follow-up questions.
-- Round floats to 2 decimal places. Never invent values not in the data.
-- If asked about SQL databases, call sql_explorer. If asked about external data sources, call multi_source_fetch."""
+- Answer ONLY from the document. If the retrieved passages do not contain the answer, reply "I couldn't find that in the document." — never guess.
+- Never invent facts, numbers, names, or policies that are not in the document.
+- Call finish immediately once you have the grounded answer; do not ask follow-up questions."""
 
 
 async def _load_prior_messages(session_id: str) -> list:

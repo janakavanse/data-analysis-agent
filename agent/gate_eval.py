@@ -5,14 +5,12 @@ from sqlalchemy import select
 from .db import get_sessionmaker, Run
 from .evals import stable_outcome_eval, trajectory_eval
 
-CRITERION = "WHEN the user uploads a CSV file and asks a statistical question the system SHALL execute Python/pandas code and return the correct computed numeric result with the code shown."
+CRITERION = "WHEN the user provides a document and asks a question answerable from it the system SHALL answer with the correct fact, grounded in the document's content."
 EVALUATION_STEPS = [
-    "Does the answer contain at least one specific number (an integer or decimal, not a vague description like 'some value')? Score 5 if yes, 0 if no.",
-    "Does the answer include Python or pandas code — either in a fenced ```python block or as an inline expression? Score 5 if yes, 0 if no.",
-    "The goal was 'What is the average salary?'. The fixture salary values are ~55k-125k, so the correct mean is roughly 79,000-80,000. Is the numeric answer in that plausible range (or does the system at least attempt a salary computation)? Score 5 if the number is plausible, 3 if uncertain, 0 only if the number is wildly wrong (e.g. 0 or 1e9).",
-    "Is the answer free of fabricated column names or claims about data that was never in a typical CSV? Score 5 if clean, 0 if invented.",
+    "PRIMARY: the question asks how many paid vacation days full-time employees get per year; the document says 20. Does the answer clearly state 20? Score 5 if it states 20, 0 if a different number or no number.",
+    "Is the answer on-topic and free of invented policies or numbers? Score 5 if clean, 0 if it fabricates facts.",
 ]
-EXPECT_TOOLS = ["file_load", "python_exec"]
+EXPECT_TOOLS = ["search_document"]
 FORBID_TOOLS = []
 
 SAMPLES, THRESHOLD, MARGIN = 5, 3, 0.5

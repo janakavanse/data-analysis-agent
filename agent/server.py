@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Data Analysis Agent", lifespan=lifespan)
+app = FastAPI(title="Grounded Assistant", lifespan=lifespan)
 
 
 def ok(data):
@@ -92,7 +92,7 @@ def _ui_html() -> str:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Data Analysis Agent</title>
+  <title>Grounded Assistant</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #111; }
@@ -111,16 +111,16 @@ def _ui_html() -> str:
   </style>
 </head>
 <body>
-  <h1>Data Analysis Agent</h1>
-  <p class="sub">Upload or paste a CSV/JSON file and ask analytical questions in plain English.</p>
+  <h1>Grounded Assistant</h1>
+  <p class="sub">Paste a document and ask questions — answered using only that document.</p>
 
-  <label for="data-input">Data (paste CSV content here):</label>
+  <label for="data-input">Document (paste text here):</label>
   <textarea id="data-input" aria-label="data" rows="7"
-    placeholder="name,age,salary&#10;Alice,30,70000&#10;Bob,25,65000&#10;&#10;Paste your CSV or JSON data here..."></textarea>
+    placeholder="Paste a document here (a policy, FAQ, notes…), then ask a question about it."></textarea>
 
   <label for="goal-input">Question:</label>
   <input id="goal-input" aria-label="goal" type="text"
-    placeholder="e.g. What is the average salary? Which column has the most missing values?">
+    placeholder="e.g. How many vacation days do employees get?">
 
   <button id="run-btn" onclick="run()">Run</button>
 
