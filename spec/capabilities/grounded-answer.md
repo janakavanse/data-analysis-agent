@@ -16,6 +16,9 @@ is the v1 real slice — it calls the real runtime LLM and is proven live by the
 - IF the model attempts a sensitive or irreversible action THEN the system SHALL require human approval before performing it. [@eval: tests/test_guardrails.py::test_hitl_blocks_risky_without_approval]
 - IF the answer contains personal data such as an email THEN the system SHALL mask it before returning. [@eval: tests/test_guardrails.py::test_pii_guardrail_masks_email]
 
+## Targets (code files this capability governs — reconciliation anchor)
+targets: agent/graph.py, agent/runner.py, agent/tools.py, agent/sessions.py, agent/memory.py, agent/guardrails.py
+
 ## Tools & layers touched
 
 - tool: `search_document`  (in-process @tool — keyword retrieval over the session document's passages)

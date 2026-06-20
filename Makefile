@@ -3,7 +3,7 @@ GOAL     := "How many paid vacation days do full-time employees get per year?"
 FOLLOWUP := "How far in advance must I request time off?"
 DATA_FILE := scripts/fixtures/handbook.txt
 
-.PHONY: setup dev gate demo-gate
+.PHONY: setup dev gate demo-gate analyze
 
 setup:
 	uv sync --extra dev
@@ -11,6 +11,9 @@ setup:
 
 dev:
 	uv run python -m agent
+
+analyze:
+	uv run python -m agent.analyze
 
 gate: demo-gate
 
