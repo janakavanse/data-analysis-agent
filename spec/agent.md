@@ -21,41 +21,41 @@ Mark `[x]` ON / `[ ]` OFF. The "why" is one line, specific to **this** agent (no
 
 - [x] **L1 · Model & providers** — `harness/patterns/model-and-providers.md`
   Runtime LLM behind `init_chat_model`; provider/model pinned in `spec/tech-stack.md` (cheap tier default).
-  <!-- FILL IN: one line — anything model-specific this agent needs (e.g. JSON mode, long context, vision). -->
+  Google `gemini-2.5-flash` via `langchain-google-genai`; no vision or JSON-mode override needed for P1 text analysis.
 - [x] **L2 · Context engineering** — `harness/patterns/context-engineering.md`
   Assemble the window each turn: domain system prompt + goal + tool results, within a token budget.
-  <!-- FILL IN: one line — what must always be in context for this domain (and what to keep out). -->
+  Domain prompt must always include the session file path and the user's analytical goal; exclude raw file bytes from context (only load them via `file_load`).
 - [x] **L3 · Memory (working / short-term only)** — `harness/patterns/memory.md`
   In-run scratchpad + message history. **Long-term / cross-run memory is OFF** (see earns-its-place below).
-  <!-- FILL IN: one line — what the agent must remember within a single run. -->
+  Agent must remember the loaded DataFrame and prior analytical steps within the same session so follow-up questions require no re-upload.
 - [x] **L4 · Tools & MCP** — `harness/patterns/tools-and-mcp.md`
   Internal actions = plain typed `@tool` in-process; **MCP only for external integrations** (OAuth2.1, no static secrets).
-  <!-- FILL IN: one line — the concrete tools this agent calls, and which (if any) are external/MCP. -->
+  In-process tools: `file_load`, `python_exec`, `sql_explorer` (P2 stub), `multi_source_fetch` (P3 stub), `write_todos`, `finish`. No MCP in P1.
 - [x] **Orchestration · ReAct Deep-Agent loop** — `harness/patterns/react-agent.md`
   LangGraph `StateGraph`: `agent → (tools → agent)* → finalize`, with planning todos + a `finish` tool.
   Core invariants (from `spec/constitution.md`): `max_iterations` sized to worst-case tool depth (not the
   happy path), a `force_finalize` fallback chain that never returns a blank answer, and graceful degradation
   on non-critical external failures. Code-executing tools use AST-validated eval, never regex dispatch.
-  <!-- FILL IN: one line — anything non-default about the loop (iteration cap, forced finalize, sub-agent split). -->
+  `max_iterations` set to 8 to cover: `write_todos` → `file_load` → up to 3 `python_exec` refinement calls → `finish`; `force_finalize` fires on iteration cap.
 - [x] **L7 · Guardrails (action-safety only)** — `harness/patterns/guardrails-and-hitl.md`
   Validate tool inputs, refuse out-of-scope/unsafe actions per the domain rules. **HITL pause is OFF** (below).
-  <!-- FILL IN: one line — the specific actions to gate/refuse for this agent. -->
+  AST-validate all `python_exec` input: block filesystem escapes (any `open()`, `os.*`, `pathlib.*` outside session dir) and destructive ops (DELETE, DROP, TRUNCATE, rm, shutil.rmtree, os.remove).
 - [x] **L9 · Observability & Evals** — `harness/patterns/observability-and-evals.md`
   OTel-GenAI spans → SQLite → built-in, self-contained **organized `/traces` observability dashboard**
   (overview + drill-down; no Docker/signup) for a non-technical operator. Outcome eval is the **hard gate**
   for the v1 single-capability slice (a 200 with the wrong answer FAILS, multi-sampled with margin so
   exit 0 is deterministic); trajectory eval is advisory until a 2nd capability exists. Each EARS line is
   bound to an executable check via its `[@eval]` token — that binding is what "proves it ran."
-  <!-- FILL IN: one line — the outcome eval that proves *this* agent works (links to a capability's criteria). -->
+  Outcome eval proves `file-analysis` P1: judge scores whether the answer contains a correct numeric result + code; `expect_tools: [file_load, python_exec]`.
 - [x] **L10 · Interface / serving** — `harness/patterns/interface.md`
   Async FastAPI: `GET /health`, `POST /runs`, `GET /traces`. Port **8001**. One JSON envelope everywhere:
   routes return `ok(data)` or raise `api_error(...)` — a failed run reads `state['error']`, logs with
   `run_id`, and returns `api_error('RUN_FAILED', status=500)` (no `error.html`). Serves the static
   Next.js export from the same port/command.
-  <!-- FILL IN: one line — any extra endpoint/SSE/streaming this agent exposes. -->
+  Self-contained HTML UI served at `GET /` (no Node.js build step); includes a file upload affordance that posts multipart to `POST /sessions/{id}/resource` before the first `/runs` call.
 - [x] **L11 · Deploy & Operate** — `harness/patterns/deploy.md`
   Portable artifact (`langgraph.json` / Dockerfile); local SQLite → Postgres + Redis on the prod ladder.
-  <!-- FILL IN: one line — the deploy target (Railway/Fly/Modal/…) once known; OK to leave for /deploy. -->
+  Deploy target TBD (Railway / Fly / Modal — chosen at `/deploy`); local demo runs on port 8001 with SQLite.
 
 > Persistence (the data spine — `harness/patterns/persistence.md`) is not a toggle: it's always on.
 > Async SQLAlchemy 2.0, SQLite (`aiosqlite`) local → Postgres (`asyncpg`) prod. Tables: `runs`, `messages`,
@@ -67,25 +67,29 @@ Mark `[x]` ON / `[ ]` OFF. The "why" is one line, specific to **this** agent (no
 ### Earns its place — OFF by default (turn ON only when a capability needs it; that's the deliberate cost)
 
 - [ ] **L5 · Retrieval / RAG** — `harness/patterns/retrieval.md`
-  ON only if the agent must ground answers in a corpus it doesn't already know.
-  <!-- FILL IN: leave OFF, or one line — what corpus, why the model can't answer without it. -->
+  OFF — the agent reads data from user-uploaded files via `file_load`, not from a standing corpus.
 - [ ] **L3+ · Long-term / cross-run memory** — `harness/patterns/memory.md`
-  ON only if the agent must remember facts *across* separate runs/users.
-  <!-- FILL IN: leave OFF, or one line — what persists across runs, scoped to whom. -->
+  OFF — uploaded files and analysis results are session-scoped; no cross-run user memory needed in v1.
 - [ ] **L6 · Multi-agent (supervisor + sub-agents)** — `harness/patterns/multi-agent.md`
-  ON only if one ReAct loop genuinely can't hold the task; sub-agents get isolated context.
-  <!-- FILL IN: leave OFF, or one line — the split and why a single loop fails. -->
+  OFF — a single ReAct loop handles file load → code execution → answer in one session. No sub-agent split needed in P1.
 - [ ] **L7+ · HITL (human-in-the-loop pause)** — `harness/patterns/guardrails-and-hitl.md`
-  ON only if a dangerous/irreversible action must pause for human approval mid-run.
-  <!-- FILL IN: leave OFF, or one line — which action pauses, who approves. -->
+  OFF — code execution is AST-validated and sandboxed; no irreversible mutation occurs, so no mid-run human approval gate is needed.
 - [ ] **L8 · Durability (checkpointer / resume)** — `harness/patterns/durability.md`
-  ON only if a run is long/expensive enough that surviving a crash or restart matters.
-  <!-- FILL IN: leave OFF, or one line — why a run must resume rather than restart. -->
+  OFF — Python analysis runs complete in seconds; crash recovery via resume is not justified for P1.
 
 ## Notes
-> "Done" for this agent = the mechanical gate exits 0: the full deterministic test pyramid (FakeModel inner
-> loop) + a robust live two-turn E2E over HTTP against the real model + the outcome eval passing. The gate is
-> the only blocking verdict; spec/plan/qa + UI screenshot reviews run every build and their fixes are applied,
-> but the build stays unattended after the single Q4 approval. Non-negotiables live in `spec/constitution.md`.
 
-<!-- FILL IN (optional): any layer interaction or trade-off worth recording for the build. -->
+Sessions are keyed by `session_id` (= `thread_id` in `runs`). A `POST /sessions/{id}/resource` multipart
+endpoint receives the uploaded file, stores it in the session resource store keyed by `session_id`, and
+makes it available to `file_load` for the duration of that session. This is the `C-SESSION-SCOPE`
+contract: the file persists across turns so Q2 (follow-up) can call `file_load` without a re-upload.
+The gate's two-turn E2E (Q1 = upload + question, Q2 = follow-up without re-upload) validates this
+session scoping directly.
+
+`python_exec` uses AST-level validation (not regex) per `spec/constitution.md` § AST-EVAL: parse the
+code string with `ast.parse()`, walk the tree, and reject any node that opens a file handle outside
+the session directory or calls a destructive stdlib function. Return a safe error message to the agent;
+never raise to the user.
+
+Domain entities beyond `runs`/`messages`/`spans`: none (uploaded files are held in-memory per session,
+not persisted to the DB in v1).
