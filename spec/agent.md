@@ -1,66 +1,55 @@
-# Agent
+# Agent layers
 
-> Filled by the **spec-writer** from intake. Part 3 of the 4-part spec contract (see `harness/harness.md`).
-> Decides which of the 11 agentic layers are ON for this build. Baseline layers ship in Phase 1 and are
-> pre-checked — leave them on unless you have a reason. The earns-its-place layers stay OFF until a
-> capability needs them; turning one on is a deliberate cost. Each pattern recipe lives at the path shown;
-> don't restate it here — name the layer, mark it ON/OFF, give the one-line *why for this agent*.
+> ON = generated in this phase. Default baseline is ON and real. Turn an optional layer ON only when a
+> capability needs it; name that capability in Why. Each layer maps to one recipe in harness/patterns/.
 
-## Layers
+| Layer | Recipe | Default | This build | Why (capability) |
+|-------|--------|---------|-----------|------------------|
+| 1 · Model & providers | model-and-providers.md | ON | ON | google_genai / gemini-2.5-pro (capable tier — SQL generation + chart spec require strong reasoning; see Tech Stack note) |
+| 2 · Context engineering | context-engineering.md | ON | ON | Active dataset schema (table_name, schema_json, column types) injected into system prompt every turn — natural-language-query, visualisation |
+| 3 · Memory (short-term) | memory.md | ON | ON | Multi-turn conversation via manual history loading from `messages` table (keyed by `thread_id`) — natural-language-query |
+| 3 · Memory (long-term, cross-run) | memory.md | OFF | OFF | No cross-run recall required |
+| 4 · Tools (in-process) | tools-and-mcp.md | ON | ON | `upload_dataset`, `list_datasets`, `query_dataset`, `generate_chart`, `write_todos`, `finish` |
+| 4 · Tools (MCP, external) | tools-and-mcp.md | OFF | OFF | All integrations are in-process; no external services |
+| 5 · Retrieval / RAG | retrieval.md | OFF | OFF | Datasets are in SQL tables, not a vector store |
+| 6 · Multi-agent | multi-agent.md | OFF | OFF | Single agent handles all capabilities |
+| 7 · Guardrails | guardrails-and-hitl.md | OFF | ON | `on_tool_call` hook blocks non-SELECT SQL before `query_dataset` executes; `on_input` + `on_output` PII scan — natural-language-query, visualisation |
+| 7 · HITL | guardrails-and-hitl.md | OFF | OFF | All operations are read-only SELECT; no irreversible mutations requiring human approval |
+| 8 · Durability (checkpointer) | durability.md | OFF | ON | `AsyncSqliteSaver` required for short-term memory (`thread_id` session continuity) — natural-language-query |
+| 9 · Observability & Evals | observability-and-evals.md | ON | ON | OTel spans → SQLite → `/traces`; OUTCOME + TRAJECTORY eval gate |
+| 10 · Interface / serving | interface.md | ON | ON | FastAPI :8001 (`/health`, `POST /runs`, `POST /datasets/upload`, `/datasets`, `/traces`, `GET /` UI) — self-contained HTML UI served from FastAPI with file upload, chat window, inline Plotly chart rendering (CDN), marked.js markdown rendering |
+| — · Persistence (data spine) | persistence.md | ON | ON | `runs`, `messages`, `spans` core tables + domain tables below |
+| 11 · Deploy & Operate | deploy.md | later | later | Productionise via `/deploy` |
 
-Mark `[x]` ON / `[ ]` OFF. The "why" is one line, specific to **this** agent (not the generic layer).
+## Guardrails detail
 
-### Baseline — ON in Phase 1 (the raised default; leave on unless you have a reason)
+The `on_tool_call` guardrail for `query_dataset` is a **deterministic SQL allowlist check** — the tool
+itself validates the statement contains only `SELECT` before execution. The guardrail layer (`guardrails.py`
+`on_tool_call` hook) provides a second defense: if the agent tries to call `query_dataset` with a
+non-SELECT statement, it is blocked and a refusal `ToolMessage` is returned to the model. This is not
+HITL — no human approval is needed; the system refuses autonomously.
 
-- [x] **L1 · Model & providers** — `harness/patterns/model-and-providers.md`
-  Runtime LLM behind `init_chat_model`; provider/model pinned in `spec/tech-stack.md` (cheap tier default).
-  <!-- FILL IN: one line — anything model-specific this agent needs (e.g. JSON mode, long context, vision). -->
-- [x] **L2 · Context engineering** — `harness/patterns/context-engineering.md`
-  Assemble the window each turn: domain system prompt + goal + tool results, within a token budget.
-  <!-- FILL IN: one line — what must always be in context for this domain (and what to keep out). -->
-- [x] **L3 · Memory (working / short-term only)** — `harness/patterns/memory.md`
-  In-run scratchpad + message history. **Long-term / cross-run memory is OFF** (see earns-its-place below).
-  <!-- FILL IN: one line — what the agent must remember within a single run. -->
-- [x] **L4 · Tools & MCP** — `harness/patterns/tools-and-mcp.md`
-  Internal actions = plain typed `@tool` in-process; **MCP only for external integrations** (OAuth2.1, no static secrets).
-  <!-- FILL IN: one line — the concrete tools this agent calls, and which (if any) are external/MCP. -->
-- [x] **Orchestration · ReAct Deep-Agent loop** — `harness/patterns/react-agent.md`
-  LangGraph `StateGraph`: `agent → (tools → agent)* → finalize`, with planning todos + a `finish` tool.
-  <!-- FILL IN: one line — anything non-default about the loop (iteration cap, forced finalize, sub-agent split). -->
-- [x] **L7 · Guardrails (action-safety only)** — `harness/patterns/guardrails-and-hitl.md`
-  Validate tool inputs, refuse out-of-scope/unsafe actions per the domain rules. **HITL pause is OFF** (below).
-  <!-- FILL IN: one line — the specific actions to gate/refuse for this agent. -->
-- [x] **L9 · Observability & Evals** — `harness/patterns/observability-and-evals.md`
-  OTel-GenAI spans → SQLite → built-in `/traces` viewer; outcome + trajectory evals from the EARS criteria.
-  <!-- FILL IN: one line — the outcome eval that proves *this* agent works (links to a capability's criteria). -->
-- [x] **L10 · Interface / serving** — `harness/patterns/interface.md`
-  Async FastAPI: `GET /health`, `POST /runs`, `GET /traces`. Port 8001.
-  <!-- FILL IN: one line — any extra endpoint/SSE/streaming this agent exposes. -->
-- [x] **L11 · Deploy & Operate** — `harness/patterns/deploy.md`
-  Portable artifact (`langgraph.json` / Dockerfile); local SQLite → Postgres + Redis on the prod ladder.
-  <!-- FILL IN: one line — the deploy target (Railway/Fly/Modal/…) once known; OK to leave for /deploy. -->
+Keywords blocked (case-insensitive, checked at statement root): `DROP`, `DELETE`, `UPDATE`, `INSERT`,
+`ALTER`, `TRUNCATE`, `CREATE`, `REPLACE`.
 
-> Persistence (the data spine — `harness/patterns/persistence.md`) is not a toggle: it's always on.
-> Async SQLAlchemy 2.0, SQLite (`aiosqlite`) local → Postgres (`asyncpg`) prod. Tables: `runs`, `messages`,
-> `spans` (+ domain entities). Never `psycopg2`.
+## Checkpointer (short-term memory + durability)
 
-### Earns its place — OFF by default (turn ON only when a capability needs it; that's the deliberate cost)
+The LangGraph graph is compiled with `AsyncSqliteSaver` (`checkpoints.db`, separate from `agent.db`).
+Every `POST /runs` call carries a `thread_id` (generated by the client on first turn, persisted in
+`localStorage`). The `thread_id` is passed as `config["configurable"]["thread_id"]` so subsequent turns
+in the same session replay prior messages automatically.
 
-- [ ] **L5 · Retrieval / RAG** — `harness/patterns/retrieval.md`
-  ON only if the agent must ground answers in a corpus it doesn't already know.
-  <!-- FILL IN: leave OFF, or one line — what corpus, why the model can't answer without it. -->
-- [ ] **L3+ · Long-term / cross-run memory** — `harness/patterns/memory.md`
-  ON only if the agent must remember facts *across* separate runs/users.
-  <!-- FILL IN: leave OFF, or one line — what persists across runs, scoped to whom. -->
-- [ ] **L6 · Multi-agent (supervisor + sub-agents)** — `harness/patterns/multi-agent.md`
-  ON only if one ReAct loop genuinely can't hold the task; sub-agents get isolated context.
-  <!-- FILL IN: leave OFF, or one line — the split and why a single loop fails. -->
-- [ ] **L7+ · HITL (human-in-the-loop pause)** — `harness/patterns/guardrails-and-hitl.md`
-  ON only if a dangerous/irreversible action must pause for human approval mid-run.
-  <!-- FILL IN: leave OFF, or one line — which action pauses, who approves. -->
-- [ ] **L8 · Durability (checkpointer / resume)** — `harness/patterns/durability.md`
-  ON only if a run is long/expensive enough that surviving a crash or restart matters.
-  <!-- FILL IN: leave OFF, or one line — why a run must resume rather than restart. -->
+Prod rung (`/deploy`): swap to `AsyncPostgresSaver` (asyncpg DSN); same compiled graph, URL-only change.
 
-## Notes
-<!-- FILL IN (optional): any layer interaction or trade-off worth recording for the build. -->
+## Domain tables (beyond runs/messages/spans)
+
+- `datasets` — registry of uploaded files: `id` (uuid pk), `name` (original filename), `table_name`
+  (`ds_<uuid>`), `schema_json` (JSON: column → SQLite type), `file_type` (`csv` | `json`),
+  `row_count` (int), `created_at` (datetime UTC).
+- `ds_<uuid>` tables — dynamic data tables created per upload; columns inferred from file headers + types.
+  Not pre-declared in `db.py`; created at runtime by the `upload_dataset` tool using `CREATE TABLE IF NOT
+  EXISTS` via the async engine. Dropped only by an explicit future "delete dataset" capability (out of scope
+  for Phase 1).
+- `threads` (session accumulator) — `thread_id` (pk), `active_dataset_id` (fk → datasets.id, nullable),
+  `input_tokens` (int, running total), `output_tokens` (int), `cost_usd` (float), `created_at`,
+  `updated_at`. Used by the UI session header to display running cost.
