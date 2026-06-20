@@ -1,19 +1,21 @@
-<!-- GENERATED from harness/ — do not edit; run `python harness/generate.py` -->
+# Claude Code — entry point
 
-# Claude Code — Entry Point
+A lean, Claude-Code-native **harness** that builds and evolves an agentic-AI agent and keeps its **spec and
+code always in sync**. Code is truth; the spec is a projection reconciled to it. The harness is the point —
+the `agent/` is just the example it builds and proves.
 
-**First action: read [`harness/harness.md`](harness/harness.md)** — the operating manual. Then read the
-spec in `spec/` if it is filled in; otherwise run `/build "<your idea>"`.
+## The loop
+`intent → question it (plan mode) → implement in CODE → reconcile SPEC → prove (make gate) → review`
 
-## What this repo is
-A frontier spec-driven harness that builds a production agentic AI agent from a spec. Claude Code generates
-the agent fresh from the recipes in `harness/patterns/` (current library versions), gated by mechanical
-checks. Nothing is a frozen app — the harness ships knowledge, not lock-in.
+## Commands
+- `/new "<idea>"` — bootstrap a new agent: spec → a proven v1.
+- `/change "<intent>"` — evolve the agent; code + spec end reconciled.
+- `/sync` — reconcile the spec from the current code (code → spec).
 
-## Map
-- `harness/harness.md` — the rules · `harness/workflows/` — procedures (/build, /deploy, …)
-- `harness/agents/` — sub-agent roles · `harness/patterns/` — the frontier code recipes (all 11 layers)
-- `.claude/agents/` — those roles as Claude Code subagents · `.claude/commands/` — those workflows as slash commands
-- `spec/` — the 4-file input contract you fill · `.githooks/` — mechanical guardrails
+## What's here
+- `agent/` — the real, tested agent (truth) · `spec/capabilities/` — its EARS criteria (a projection of the code)
+- `make gate` — the proof: boots, runs two turns, judges the answer (a 200 with a wrong answer FAILS)
+- `make analyze` — the reconciliation check: every criterion bound to a test, every `targets:` glob real
+- `.claude/agents/` — `spec-projector` (code→spec) · `reviewer` (diff review) · `.githooks/` — secret + reconciliation guards
 
-A funded `APP_LLM_API_KEY` is required for a real run.
+**Done = `make gate` exits 0.** **Spec and code must always reconcile (`make analyze`)** — the pre-commit hook enforces it.
