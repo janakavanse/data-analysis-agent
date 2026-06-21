@@ -2,7 +2,14 @@
 
 **Date:** YYYY-MM-DD  
 **Author:** [human / researcher]  
-**Status:** draft | approved | in-progress | done
+**Status:** draft | proposed | approved | in-progress | done
+
+> **`proposed`** = scope deliberately split out of a core FR to keep the first delivery
+> *lovable, not bloated*. A `proposed` FR is fully drafted now but does **not** enter the build
+> pipeline; the user approves it (→ `approved`) **after** testing the core app, when its value is
+> concrete. This is the *only* sanctioned way to defer scope — a real numbered FR with EARS
+> criteria, human-approved later. It is not "drop it to a mythical later iteration" (still
+> forbidden — see [planner.md](../agents/planner.md)).
 
 > **Conventions for this file**
 > - **Success Criteria use EARS** (Easy Approach to Requirements Syntax) — see the legend
@@ -45,9 +52,11 @@
 
 ## Non-Goals
 
-> What is explicitly out of scope for this FR?
+> What is explicitly out of scope for this FR? Anything **split out to keep this delivery
+> lovable-not-bloated** is named here with its follow-up FR number and `(proposed)` status — a
+> traceable pointer, never a vague "later."
 
-- <!-- e.g. "Multi-file upload — separate FR" -->
+- <!-- Deferred scope → name the FR: "Multi-chart dashboards → FR-002 (proposed)" -->
 - <!-- e.g. "Authentication — not required for this milestone" -->
 
 ## Key Constraints
@@ -69,3 +78,29 @@
 > is unresolved.
 
 - [ ] <!-- question + the resolved decision + who resolved it -->
+
+## Step Plan
+
+> This whole FR ships in **one iteration** — one end-to-end, user-testable delivery. The planner
+> slices that iteration into **steps** (the parallel work-units) here once the spec is signed
+> off — the authoritative plan, not a copy. Each step: one deliverable (one sentence), one fast
+> gate (<30s), ~10–15 min. Mark `Depends on` + `Parallel group` so independent steps run at
+> once. Always starts with Step 0 (scaffold, `/health` 200).
+
+| #   | Deliverable                       | Depends on | Parallel group | Gate command           |
+|-----|-----------------------------------|------------|----------------|------------------------|
+| 0   | <!-- scaffold — /health green --> | —          | —              | <!-- curl …/health --> |
+| 1   | <!-- first model + test -->       | 0          | A              | <!-- uv run pytest --> |
+
+## Progress Tracker
+
+> **Everyone updates this** — the single file to read to know where the work stands. Every stage
+> (planner, executor, reviewer, deployer, analyser) updates the **step** row it touches as
+> control passes back to the supervisor. Status: `todo | in-progress | gate-green | accepted`.
+> `accepted` is set only at the **iteration boundary**, when the user accepts the whole. The
+> analyser cross-checks this table against `logs/` on each pass — a row claiming `gate-green`
+> with no matching gate output in the session report is drift.
+
+| Step | Status        | Gate output (logs ref)   | Reviewer sign-off | Last updated  |
+|------|---------------|--------------------------|-------------------|---------------|
+| 0    | <!-- todo --> | <!-- logs/sessions/… --> | <!-- ✔ / — -->    | <!-- date --> |

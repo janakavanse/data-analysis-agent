@@ -39,14 +39,16 @@ sense of the truth and corrects course.
 2. **Spec stays current.** Spec is continuously updated to reflect what the code and logs
    reveal. When they diverge, spec wins — fix the code, or amend the spec first.
 
-3. **15-minute iterations.** Every unit of work is scoped so the executor can complete it
-   in ~15 minutes and leave the system in a runnable, demonstrable state. An iteration
-   that cannot be described in one sentence is too large — split it. This is the atomic
-   unit of the harness: one deliverable, one gate command, one commit.
+3. **One iteration, parallel steps.** An **iteration** delivers the *whole requirement*,
+   user-testable — the unit the user accepts (normally one per build). It is built from
+   **steps**: ~10–15-min work-units, each one deliverable + one fast gate + one commit, run
+   **in parallel** wherever independent. A step that cannot be described in one sentence is too
+   large — split it. Speed comes from widening the parallel step front, not from spreading the
+   work across many user-facing iterations.
 
-4. **Always runnable.** After every iteration, the system must start and serve a request.
-   A build that is "almost working" is not working. Partial progress is committed only
-   when the gate passes — never mid-iteration.
+4. **Always runnable.** After every step the system must start and serve a request; at the
+   iteration boundary the whole requirement is testable. A build that is "almost working" is not
+   working. Partial progress is committed only when a step's gate passes — never mid-step.
 
 
 ## Navigation
@@ -65,12 +67,16 @@ sense of the truth and corrects course.
 - [workflows/](process/workflows/) — build, fix, deploy
 **[layout.md](layout.md)** — repo skeleton, where things go
 **[recipes/](recipes/)** — proven, version-stamped runnable scaffolds (python-fastapi-sqlite, python-fastapi-duckdb, frontend-nextjs)
+**[benchmark/](benchmark/)** — the harness self-benchmark: a speed×quality rubric + a scoring procedure that consumes a `/build` session run log. Measures whether harness changes make builds faster *and* higher-quality. (Briefs and results live out-of-band, not in the repo.)
 
 **[patterns/](patterns/)** — hard-won knowledge
 - [working-with-llms.md](patterns/working-with-llms.md) — provider selection, stubs, model lifecycle, error handling
 - [observability.md](patterns/observability.md) — logs, session reports, drift signals, the analyser
 - [engineering.md](patterns/engineering.md) — fundamental software-engineering principles
-- [usage-specs/](patterns/usage-specs/) — version-pinned API-shape guardrails (fastapi, langgraph, google-genai, …)
+
+> Version-pinned **usage-specs** (API-shape guardrails: fastapi, langgraph, google-genai, …) are
+> a *project* artefact, not a method one — they live flat in [../spec/patterns/](../spec/patterns/)
+> and are established/edited as part of a feature request.
 
 ---
 
