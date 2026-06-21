@@ -48,14 +48,16 @@ drift.
 
 ### 1. researcher — get the goal right
 
-Runs the intake script (`harness/process/agents/researcher.md`):
-- Round 1: 4 core questions — problem, users, success criteria, constraints
-- Round 2: 4 detail questions — integrations, non-goals, data shape, first runnable milestone
-- Writes the FR with **EARS Success Criteria** and `[NEEDS CLARIFICATION]` markers wherever
-  it would otherwise guess; resolves all markers in **one bounded clarify pass**
-- Proposes tech stack (DuckDB vs SQLite is first-class, both local-first); user approves
-- Collects all API keys before sign-off; records which are present (boolean) in session report
-- Writes `spec/features/FR-NNN.md` from template; fills `spec/rules/tech-stack.md`
+Runs the **draft-first** intake (`harness/process/agents/researcher.md`) — **one human
+round-trip**, not two serial question rounds (that was the slow path: ~10 min to a signed FR):
+- **Draft the full FR from the brief first**, filling every field with best-fit defaults and
+  marking each non-obvious guess `[ASSUMPTION: …]`. Reserve `[NEEDS CLARIFICATION]` only for the
+  rare architecture-changing unknown that can't be defaulted.
+- Writes the FR with **EARS Success Criteria** from the template; picks the stack (DuckDB vs
+  SQLite first-class, both local-first) with rationale, all in the draft.
+- **One consolidated approval moment**: drafted FR + stack + API-key list + any blocking markers
+  batched as ≤4 choices. Approve-or-adjust in a single turn.
+- Records which keys are present (boolean) in the session report.
 
 **Pre-code spec gate (reviewer):** before the planner starts, the reviewer checks the FR for
 the four requirement-bug classes (wrong level of detail, ambiguity, conflict, incompleteness)
@@ -92,7 +94,10 @@ recipe must match the approved stack:
    - Analytics (CSV/Parquet/JSON) → `harness/recipes/python-fastapi-duckdb/`
    - (+ `harness/recipes/frontend-nextjs/` if the FR needs a UI)
 2. Replace all `appname` / `APPNAME` occurrences with the project name
-3. `uv sync --extra dev`
+3. `uv sync --extra dev` — the slowest scaffold step (network). **Kick it off in the
+   background the moment the stack is approved** (during planning) so it's warm before the
+   executor needs it; do the `appname` replace and README edits while it runs. Don't serialise
+   behind it.
 4. Tables are created automatically at startup — `create_tables()` in the lifespan (both
    recipes; no migration step, no Alembic). See [gotchas.md](../../rules/gotchas.md) C-DUCKDB-VIEW.
 5. Confirm `curl http://localhost:8001/health` returns 200 with `stub_mode: true`

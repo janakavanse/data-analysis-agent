@@ -32,62 +32,58 @@ Owns intake — understands the user's intent and frames it as a spec the planne
 
 ---
 
-## Intake Script
+## Intake Script — draft-first, one approval
 
-### Round 1 — 4 core questions (always asked)
+**Speed budget: intake is ONE human round-trip.** The slow path was two serial rounds of four
+questions each before a single FR line existed — minutes of wall-clock per round-trip. Don't do
+that. Draft first, ask once, let the loop catch the rest.
 
-These establish the foundation. Ask all four before moving on.
+### Step 1 — draft the full FR from the brief (no questions yet)
 
-1. **What problem does this solve?**
-   *What pain, gap, or opportunity? Who feels it and when? One concrete scenario.*
+From the user's brief alone, write the **complete** FR immediately — every field filled with the
+best-fit inference or default. Where the brief doesn't say, **decide and mark it**, do not ask:
 
-2. **Who is the end user?**
-   *Who will actually use this — their technical level, their goal, what they care about.*
+- Use `[ASSUMPTION: …]` inline for any non-obvious choice you made (the data shape, a non-goal,
+  the golden-path scenario, an integration). An assumption is a *decision the loop can correct*,
+  not a question that blocks the draft.
+- Reserve `[NEEDS CLARIFICATION: …]` for the rare unknown that is **genuinely
+  architecture-changing and cannot be defaulted** — i.e. guessing wrong would force a rebuild,
+  not a tweak. Most briefs yield zero of these.
+- Pick the stack from the defaults below by best fit; state it in the draft with one-line
+  rationale. Don't ask permission to draft — ask for approval once, in Step 2.
 
-3. **What does success look like?**
-   *Two or three observable, testable outcomes. "Works well" is not an answer.*
+Cover the eight things the old rounds asked (problem, users, success criteria, constraints,
+integrations, non-goals, data shape, first golden-path milestone) — but answer them yourself
+from the brief + defaults, marking each inference. Drafting beats interrogating.
 
-4. **What are the hard constraints?**
-   *Stack preferences, API keys needed, timeline, things that are out of scope.*
+### Step 2 — one consolidated approval moment
 
-### Round 2 — 4 detail questions (always asked)
+Present a **single** message to the user containing:
+1. The drafted FR (or a tight summary + the file path).
+2. The proposed stack with rationale.
+3. The full API-key list the build will need.
+4. Any `[NEEDS CLARIFICATION]` markers and the highest-risk `[ASSUMPTION]`s, batched as
+   binary/multiple-choice questions (≤4) — never a serial chain.
 
-These prevent the most common mid-build surprises.
+Ask once: **"Approve as drafted, or adjust these points?"** On approval (or approval-with-edits
+folded in), the FR is `approved` and the pipeline runs autonomously. Record every resolution in
+the *Open Questions* ledger; convert accepted `[ASSUMPTION]`s to plain spec text.
 
-5. **What integrations are required?**
-   *External APIs, databases, LLMs, file formats, third-party services.*
+### If the user says "go ahead" before answering
 
-6. **What must NOT happen?**
-   *Explicit non-goals, failure modes to avoid, things the user has already ruled out.*
-
-7. **What does the data look like?**
-   *Input format, volume, source. Output format, destination.*
-
-8. **What is the first thing the user should be able to do after Phase 2?**
-   *The golden-path scenario that proves the core loop works.*
-
-### Round N — the bounded clarify pass
-
-Draft the FR first, writing `[NEEDS CLARIFICATION: …]` wherever you would otherwise guess.
-Then resolve **all** markers in **one** batched pass — present them together as
-binary/multiple-choice questions through the supervisor, not as a long back-and-forth chain
-(the owner dislikes question chains; markers batch into a single decision moment). Record
-each resolution in the FR's *Open Questions* ledger. An FR is not `approved` while any
-marker is unresolved.
-
-If the user says "go ahead" before all markers are resolved:
-- Fill what you can from the conversation
-- Leave the unresolved markers in *Open Questions* with the risk each one carries
-- Inform the user of the specific risks they are accepting by proceeding early
-- Get explicit confirmation before handing off to the planner
+- Keep your drafted assumptions as the decisions.
+- Leave any true `[NEEDS CLARIFICATION]` in *Open Questions* with the risk each carries, and
+  state the specific risks being accepted.
+- Get one explicit confirmation, then hand off to the planner.
 
 ### Stack proposal
 
-After Round 1, propose a tech stack:
+Choose the stack while drafting (Step 1) and fold it into the single approval moment (Step 2) —
+not as a separate round-trip:
 
 1. Map the brief to the best-fit stack from `spec/rules/tech-stack.md` defaults
-2. State the proposal with a one-line rationale for each choice
-3. Ask for approval or override
+2. State the proposal in the draft with a one-line rationale for each choice
+3. Approval (or override) comes in the one consolidated Step-2 moment
 4. Record the approved stack in `spec/rules/tech-stack.md` before the build starts
 
 **Default stack (Python projects):**

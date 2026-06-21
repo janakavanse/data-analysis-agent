@@ -55,3 +55,8 @@ override is a deliberate, recorded act, never a silent one.
 11. **Collect API keys at intake.** Ask for all required API keys before the build begins.
     Never ask mid-build. If a key is missing and was not collected at intake, pause and
     surface to the user — do not continue in a degraded state without telling them.
+
+12. **Timestamp every action.** Each stage records a wall-clock **start and end time** in its
+    session-report section (and gate commands log their own timestamps). Durations must be
+    derivable from the report so latency is debuggable — a stage with no timing is incomplete.
+    Use the host clock (`date '+%Y-%m-%d %H:%M:%S'`); never invent a time.

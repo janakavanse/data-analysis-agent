@@ -26,9 +26,14 @@
 ---
 
 <!-- Each agent appends a new section using the format below. -->
+<!-- Stamp start/end from the host clock: `date '+%Y-%m-%d %H:%M:%S'` (non-negotiable #12). -->
 <!-- ────────────────────────────────────────────────────────── -->
 
-## [Stage] — [Agent name] — YYYY-MM-DD HH:MM
+## [Stage] — [Agent name]
+
+**Start:** YYYY-MM-DD HH:MM:SS  
+**End:** YYYY-MM-DD HH:MM:SS  
+**Duration:** Nm Ns
 
 ### Decisions
 <!-- What was decided and why. One bullet per decision. -->
