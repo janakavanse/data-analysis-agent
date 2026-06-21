@@ -12,7 +12,8 @@ where they are the established default.
   stack (backend, frontend, scripts, data pipelines).
 - **Tests live in `tests/` at the repo root** — co-located with `src/`, not inside it.
   (Python/pytest convention; stack recipes may vary for other languages.)
-- **Runtime output goes to `logs/`** — never committed; gitignored entirely.
+- **Outcome goes to `logs/`** — `runtime/` is gitignored (live data); `sessions/` and
+  `analysis/` are **committed** (the durable record of decisions and the analyser's drift findings).
 - **The spec is the contract** — `src/` conforms to `spec/`, never the reverse.
 
 ---
@@ -40,7 +41,7 @@ tests/           all tests
   e2e/           golden-path smoke tests
 evals/           golden cases (input + approved output) + threshold + runner — same defs local/gate/CI
 
-logs/            gitignored — runtime/, sessions/, analysis/
+logs/            runtime/ (gitignored, live data) · sessions/ + analysis/ (committed)
 harness/         the method — rules/, process/, patterns/, recipes/
 .claude/         thin Claude Code adapter
 CLAUDE.md        entry point
