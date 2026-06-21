@@ -1,7 +1,5 @@
 import json as _json
 
-from src.config import settings
-
 
 class BaseLLMClient:
     def complete(self, prompt: str, system: str = "") -> str:
@@ -34,8 +32,42 @@ class StubLLMClient(BaseLLMClient):
         return _json.dumps({"intent": "table", "sql": f"SELECT * FROM {ds} LIMIT 10"})
 
 
+class GeminiClient(BaseLLMClient):
+    """Thin wrapper around google-generativeai."""
+
+    def __init__(self, model: str, api_key: str):
+        import google.generativeai as genai
+
+        genai.configure(api_key=api_key)
+        self._model = genai.GenerativeModel(
+            model_name=model,
+            system_instruction=(
+                "You are a senior data analyst. Always respond with valid JSON only — "
+                "no markdown fences, no explanation, just the JSON object."
+            ),
+        )
+
+    def complete(self, prompt: str, system: str = "") -> str:
+        response = self._model.generate_content(prompt)
+        return response.text.strip()
+
+
 def get_llm_client() -> BaseLLMClient:
+    import os
+
+    from src.config import settings
+
     provider = settings.resolved_llm_provider
+
     if provider == "stub":
         return StubLLMClient()
-    raise NotImplementedError(f"Provider {provider!r} not yet implemented")
+
+    if provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY", "")
+        if not api_key:
+            raise RuntimeError(
+                "GEMINI_API_KEY not set. Add it to .env or set in environment."
+            )
+        return GeminiClient(model=settings.analyst_llm_model, api_key=api_key)
+
+    raise NotImplementedError(f"Unknown LLM provider: {provider!r}")
