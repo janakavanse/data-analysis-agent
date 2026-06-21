@@ -1,92 +1,94 @@
 # Tech Stack
 
-Filled in by the researcher/planner after the product spec is approved.
-The user may override any choice before sign-off.
+Filled in by the researcher at intake. Defaults below apply to Python projects.
+Override any line — the researcher proposes, the user approves.
 
 ---
 
 ## Language
 
-<!-- FILL IN: e.g., Python 3.12 / TypeScript 5 / Go 1.22 -->
+**Python 3.12+** with `uv` as package manager.
 
-**Why:** <!-- reason -->
+Override: <!-- e.g. TypeScript 5 + Bun, if different -->
 
 ## Agent Framework
 
-<!-- FILL IN: e.g., LangGraph / CrewAI / AutoGen / custom / none -->
+**LangGraph** — for any project with a reasoning loop or multi-step orchestration.  
+**None** — for simple pipelines or pure API projects.
 
-**Why:** <!-- reason -->
+Override: <!-- e.g. CrewAI, custom -->
 
 ## LLM Provider
 
-<!-- FILL IN: e.g., Anthropic Claude / OpenAI GPT / Google Gemini -->
+**Provider:** <!-- FILL IN: openai | anthropic | gemini -->  
+**Model:** <!-- FILL IN: see safe defaults table below -->  
+**Env var:** `APPNAME_LLM_MODEL` — always configurable, never hardcoded.
 
-**Model:** <!-- specific model — see Permanent Rules below for safe defaults -->
+Safe defaults (2026):
 
-**Why:** <!-- reason -->
+| Provider | Default model |
+|----------|--------------|
+| Anthropic | `claude-3-5-haiku-latest` |
+| OpenAI | `gpt-4o-mini` |
+| Google Gemini | `gemini-2.5-flash` |
 
 ## Backend Framework
 
-<!-- FILL IN: e.g., FastAPI / Express / Django / none -->
+**FastAPI** — async, typed, fast.
+
+Override: <!-- e.g. Django, Flask, none -->
 
 ## Database
 
-<!-- FILL IN: e.g., PostgreSQL / SQLite / Redis / none -->
+**PostgreSQL** (production + tests).  
+**SQLite / DuckDB** — local-only or analytics projects only.
 
-**ORM/ODM:** <!-- e.g., SQLAlchemy 2.0 / Prisma / none -->
+**ORM:** SQLAlchemy 2.0 (async) + Alembic for migrations.
+
+Override: <!-- e.g. MongoDB + Motor, if different -->
 
 ## Frontend
 
-<!-- FILL IN: e.g., Next.js 15 / React / Vue / none -->
+<!-- FILL IN: Next.js 15 / Jinja2 templates / none -->
+
+Override if needed.
 
 ## Key Libraries
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| | | |
+| fastapi | latest | HTTP layer |
+| sqlalchemy | 2.x | ORM |
+| alembic | latest | migrations |
+| pydantic-settings | latest | config |
+| langgraph | latest | agent loop |
+| pytest + pytest-asyncio | latest | tests |
 
-## Dependency Management
-
-<!-- FILL IN: e.g., uv + pyproject.toml / npm / pnpm / go modules -->
+Add project-specific libraries here at intake.
 
 ## What to Avoid
 
-<!-- FILL IN: libraries, patterns, or approaches explicitly off-limits and why -->
+- SQLite as a test substitute for PostgreSQL
+- Hardcoded model names (use env var)
+- `git add -A` or committing `.env`
+- Dev-only DB drivers (`psycopg2-binary` must be in `[project.dependencies]`)
 
 ---
 
 ## Permanent Rules
 
-These apply to all projects regardless of stack choice.
+### Port: 8001
 
-### Default dev port: 8001
-
-Use port **8001** (not 8000 — commonly occupied by other local services).
-
-- `__main__.py` hard-codes `port=8001` unless overridden by env var
-- README references `http://localhost:8001`
-- `.env.example` includes `PORT=8001` if the port is configurable
-
-### LLM model names
-
-Always use a current, verified model name — verify via `ListModels` or provider docs
-before hardcoding. Make the model name configurable via env var (e.g. `APPNAME_LLM_MODEL`).
-A 404 NOT_FOUND from the LLM API almost always means the model name is wrong.
-
-Current safe defaults (2026):
-
-| Provider | Default model |
-|----------|---------------|
-| Google Gemini | `gemini-2.5-flash` |
-| OpenAI | `gpt-4o-mini` |
-| Anthropic | `claude-3-5-haiku-latest` |
+`src/__main__.py` starts on port **8001**. README and `.env.example` reference `http://localhost:8001`.
 
 ### DB driver in production dependencies
 
-The DB driver (e.g. `psycopg2-binary`, `asyncpg`) must be in `[project.dependencies]`,
-never dev-only. Migrations run at deploy time — a dev-only driver breaks them.
+DB driver (`asyncpg`, `psycopg2-binary`) must be in `[project.dependencies]`, never dev-only.
 
 ### Tests use the same DB as production
 
-If production uses PostgreSQL, tests use PostgreSQL. SQLite is not a substitute.
-Tests must be fully automated (`conftest.py` creates and tears down). No manual setup.
+Phase 2 gate must pass using PostgreSQL — not SQLite. `conftest.py` creates and tears down the test DB automatically.
+
+### Phase 2 must pass with no API key
+
+`APPNAME_LLM_PROVIDER=stub` must be set by default. The stub runs offline. Phase 2 gate fails if it requires a real API key.
