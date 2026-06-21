@@ -18,7 +18,7 @@ import tempfile
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
@@ -307,6 +307,42 @@ async def upload_files(files: list[UploadFile]):
             await s.commit()
         results.append({"dataset_id": ds_id, "name": ds_name, **meta})
     return ok(results)
+
+
+@app.post("/datasets/upload")
+async def upload_dataset_file(name: str = Form(...), file: UploadFile = File(...)):
+    """Convenience: create dataset + upload one file in one shot. Matches the frontend upload form."""
+    ds = Dataset(name=name or os.path.splitext(file.filename or "upload")[0])
+    async with get_sessionmaker()() as s:
+        s.add(ds)
+        await s.commit()
+        ds_id = ds.id
+
+    suffix = os.path.splitext(file.filename or "upload")[1]
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        tmp.write(await file.read())
+        tmp.close()
+        import asyncio
+        meta = await asyncio.to_thread(
+            duck.ingest_file, ds_id, file.filename or "table", tmp.name, file.filename or "table")
+    except ValueError as e:
+        return err(str(e))
+    finally:
+        os.unlink(tmp.name)
+
+    async with get_sessionmaker()() as s:
+        s.add(DataTable(
+            dataset_id=ds_id, table_name=meta["table_name"], filename=meta["filename"],
+            n_rows=meta["n_rows"], n_cols=meta["n_cols"], columns=meta["columns"]))
+        await s.commit()
+    return ok({
+        "dataset_id": ds_id,
+        "name": ds.name,
+        "row_count": meta["n_rows"],
+        "schema": {"columns": {c["name"]: c["type"] for c in meta["columns"]}},
+        **meta
+    })
 
 
 @app.get("/datasets/{dataset_id}")
