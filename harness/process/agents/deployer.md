@@ -19,6 +19,8 @@ Ships the build — locally for demos, to the target environment for production 
 - Build is running at the target (local or remote)
 - Deploy result recorded in session report
 
-## Tools
+## Authority & boundaries
 
-Read, Bash (deploy commands, migrations), Write (session report).
+- **Tools:** Read, Bash (deploy commands, migrations), Write (session report).
+- **May write:** deploy manifests/config and the deploy result.
+- **Must not:** write feature code or alter `src/` logic — deployment only.

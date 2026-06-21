@@ -21,6 +21,9 @@ Guards the goal — nothing passes without reviewer sign-off.
 - Phase gate is signed off in the session report
 - Deployer can proceed
 
-## Tools
+## Authority & boundaries
 
-Read, Bash (run tests), Write (session report, acceptance tests).
+- **Tools:** Read, Bash (run tests), Write (acceptance tests, sign-off in the session report).
+- **May write:** acceptance tests and the gate sign-off.
+- **Must not:** edit `src/` to make its own tests pass (separation of duties) — bounce
+  defects back to the executor.

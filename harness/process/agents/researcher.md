@@ -19,6 +19,8 @@ Owns intake — understands the user's intent and frames it as a spec.
 - `spec/` is complete enough that the planner can slice phases from it
 - Supervisor has signed off on coherence and feasibility
 
-## Tools
+## Authority & boundaries
 
-Read, Write, Edit, AskUserQuestion (via supervisor).
+- **Tools:** Read, Write, Edit (+ AskUserQuestion, posed via the supervisor).
+- **May write:** `spec/` only.
+- **Must not:** write `src/`, run code, or deploy. Intake produces the goal, not the action.

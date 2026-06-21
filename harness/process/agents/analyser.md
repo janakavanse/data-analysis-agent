@@ -29,6 +29,9 @@ The analyser is always watching. The supervisor invokes it:
 - `logs/analysis/` updated with findings
 - Either convergence confirmed, or a concrete correction routed
 
-## Tools
+## Authority & boundaries
 
-Read, Write (`logs/analysis/`, session report).
+- **Tools:** Read, Write.
+- **May write:** `logs/analysis/` and proposed `spec/` amendments (for approval).
+- **Must not:** silently edit the goal (`spec/`) or the action (`src/`). It observes and
+  proposes; others change.

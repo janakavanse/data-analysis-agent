@@ -21,6 +21,9 @@ Implements the current phase — turns the plan into working code.
 - Unit tests exist and pass
 - The build runs offline (no API key required for the gate)
 
-## Tools
+## Authority & boundaries
 
-Read, Edit, Write, Bash (run tests, start server).
+- **Tools:** Read, Edit, Write, Bash (run tests, start server).
+- **May write:** `src/` and unit tests for the current phase.
+- **Must not:** exceed the current slice, edit `spec/`, or sign off its own work — the
+  reviewer is a separate authority.

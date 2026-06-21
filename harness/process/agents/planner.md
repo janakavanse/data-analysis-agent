@@ -18,6 +18,8 @@ Slices the spec into a value-ordered phase plan.
 - Phase plan exists in the session report with gate test per phase
 - Executor can begin Phase 1
 
-## Tools
+## Authority & boundaries
 
-Read, Write (session report only).
+- **Tools:** Read, Write.
+- **May write:** the phase plan in the session report.
+- **Must not:** write `src/`, edit `spec/`, or run code. The planner sequences work; it does not do it.
