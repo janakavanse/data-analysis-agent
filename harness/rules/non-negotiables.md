@@ -61,17 +61,18 @@ override is a deliberate, recorded act, never a silent one.
     do not continue in a degraded state without telling the user, and do not ask via inline
     text they may not notice.
 
-12. **Timestamps in exactly three places — nowhere else.**
-    Timestamps are only for wall-clock accounting. Do not timestamp decisions, bullets, gate
-    output prose, or anything else. The three places:
+12. **The session report is a live tail — write to it continuously, timestamps in three places only.**
 
-    1. **Stage header** — the very first write to the session file when a stage begins:
-       `**Start:** HH:MM:SS`. Do this before any other tool call.
-    2. **Breadcrumbs** — one line every ~2 minutes during any long sub-task (deps install,
-       npm install, multi-file write, test run >30s): `- HH:MM:SS — [what is happening]`.
-       Nothing else in the breadcrumb — no extra stamps, no dated bullets.
-    3. **Stage footer** — when handing back: `**End:** HH:MM:SS`, `**Duration:** Nm`,
-       `**Dominant cost:** <one word>`. Then fill the Latency ledger row.
+    The Latency Ledger is the primary artifact. **Write a ledger row the moment a stage starts**
+    (Start column) — not at the end. Fill End + Dur + Dominant cost on handoff. Every ~2 minutes
+    during a long sub-task (uv sync, npm install, multi-file write, test run >30s) add a note in
+    the ledger's Notes column: `HH:MM:SS <what is happening>`. A reader watching the file should
+    see live progress; a ledger with blank rows while work is happening is non-compliant.
 
-    Everywhere else in the session report — decisions, trace, gate output, blockers — **no
-    timestamps**. Use the host clock (`date '+%Y-%m-%d %H:%M:%S'`); never invent a time.
+    Timestamps go in exactly three places — nowhere else:
+    1. **Stage header** `**Start:** HH:MM:SS` — the very first write when a stage begins.
+    2. **Ledger Notes column** — `HH:MM:SS <what>` every ~2 min during long sub-tasks only.
+    3. **Stage footer** `**End:** HH:MM:SS` + `**Duration:** Nm` — on handoff.
+
+    No timestamps in decisions, trace, gate output, blockers, `src/`, `README.md`, or any project
+    file. Use the host clock (`date '+%Y-%m-%d %H:%M:%S'`); never invent a time.
