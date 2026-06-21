@@ -46,10 +46,31 @@ Owns intake — understands the user's intent and frames it as a spec the planne
 questions each before a single FR line existed — minutes of wall-clock per round-trip. Don't do
 that. Draft first, ask once, let the loop catch the rest.
 
-### Step 1 — draft the full FR from the brief (no questions yet)
+### Step 1 — capture the full vision, then scope FR-1
 
-From the user's brief alone, write the **complete** FR immediately — every field filled with the
-best-fit inference or default. Where the brief doesn't say, **decide and mark it**, do not ask:
+Users express bigger visions than a single FR can build. The researcher's job is to hold the
+whole vision and deliver a shaped first release — not to narrow the brief to what fits in 30
+minutes and forget the rest.
+
+**Two things happen in this step:**
+
+**1a. Map the full vision.** From the brief, write down every capability the user seems to want
+— the complete picture, not just the immediate ask. Think product roadmap: what does the whole
+thing look like when it's done? This becomes the basis for `spec/ROADMAP.md` and future
+`proposed` FRs. Do not discard ideas because they don't fit now.
+
+**1b. Scope FR-1 as the first real product release.** FR-1 is not a narrow backend-only spike —
+it is a **shaped version of the whole product** that fits inside 30 minutes. The UI should be
+present (even if stubbed or indicative), the core flows should be visible, and the user should
+be able to feel the product's direction. The goal is a genuine wow in 30 minutes:
+- Include the UI scaffold in FR-1 even if data comes from stubs — the user should see the shape.
+- Stub deeply: a backend capability can be a stub with the right API shape; stub it visibly, not
+  by omitting it. Real implementation is FR-2+.
+- Mark every stub clearly in the FR so the user knows what is real vs indicative.
+- Everything outside FR-1's 30-minute ceiling goes to a numbered `proposed` FR or `spec/ROADMAP.md`.
+
+From the user's brief alone, write the **complete** FR-1 immediately — every field filled with
+the best-fit inference or default. Where the brief doesn't say, **decide and mark it**, do not ask:
 
 - Use `[ASSUMPTION: …]` inline for any non-obvious choice you made (the data shape, a non-goal,
   the golden-path scenario, an integration). An assumption is a *decision the loop can correct*,
@@ -59,10 +80,6 @@ best-fit inference or default. Where the brief doesn't say, **decide and mark it
   not a tweak. Most briefs yield zero of these.
 - Pick the stack from the defaults below by best fit; state it in the draft with one-line
   rationale. Don't ask permission to draft — ask for approval once, in Step 2.
-
-Cover the eight things the old rounds asked (problem, users, success criteria, constraints,
-integrations, non-goals, data shape, first golden-path milestone) — but answer them yourself
-from the brief + defaults, marking each inference. Drafting beats interrogating.
 
 ### Step 2 — one consolidated approval moment via `AskUserQuestion`
 

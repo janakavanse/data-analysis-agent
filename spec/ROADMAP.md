@@ -1,7 +1,9 @@
-# Roadmap — deferred scope and future ideas
+# Roadmap — the full product vision beyond FR-1
 
-Good ideas that surfaced during a build but couldn't fit in the current FR's 30-minute ceiling.
-Nothing gets dropped — it gets parked here or in a numbered `proposed` FR.
+Users express bigger visions than a single FR can build. This file holds the whole picture —
+populated by the researcher at intake from the user's brief — so nothing gets lost and every
+future FR has a clear place in the product arc. FR-1 is the first shaped release; this roadmap
+is everything it points toward.
 
 **Two tiers:**
 
