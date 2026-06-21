@@ -74,7 +74,7 @@
 
 ### Gate result
 ```
-$ <command run>          # stamped: YYYY-MM-DD HH:MM:SS
+$ <command run>
 <output>
 ```
 **Result:** ✓ pass / ✗ fail <!-- on fail, paste the real error, not just "failed" -->

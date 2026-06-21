@@ -61,17 +61,17 @@ override is a deliberate, recorded act, never a silent one.
     do not continue in a degraded state without telling the user, and do not ask via inline
     text they may not notice.
 
-12. **Timestamp every action, log continuously, and account for the wall-clock.**
-    - **Start immediately:** the very first thing a stage does is append its `## [Stage]` header
-      with `Start:` timestamp to the session file — before any code, any read, any tool call.
-      A stage that hasn't written to the session file is invisible.
-    - **Breadcrumb every ~2 minutes during long operations:** any sub-task that takes more than
-      ~2 minutes (installing deps, running tests, writing a large file) appends a one-line
-      breadcrumb to the session file — `HH:MM:SS — [what is happening right now]`. A 10-minute
-      executor step with zero log entries is a black box; the harness must never be a black box.
-    - **End with timing:** close each stage section with `End:`, `Duration:`, and a one-word
-      **dominant cost** (model-latency | tooling/network | rework/retry | waiting-on-user |
-      waiting-on-background). Fill the **Latency ledger** row on handoff.
-    - **Analyser flags missing timing and silent stages** (no breadcrumbs in a long step) as
-      non-compliant on the very next handoff.
-    Use the host clock (`date '+%Y-%m-%d %H:%M:%S'`); never invent a time.
+12. **Timestamps in exactly three places — nowhere else.**
+    Timestamps are only for wall-clock accounting. Do not timestamp decisions, bullets, gate
+    output prose, or anything else. The three places:
+
+    1. **Stage header** — the very first write to the session file when a stage begins:
+       `**Start:** HH:MM:SS`. Do this before any other tool call.
+    2. **Breadcrumbs** — one line every ~2 minutes during any long sub-task (deps install,
+       npm install, multi-file write, test run >30s): `- HH:MM:SS — [what is happening]`.
+       Nothing else in the breadcrumb — no extra stamps, no dated bullets.
+    3. **Stage footer** — when handing back: `**End:** HH:MM:SS`, `**Duration:** Nm`,
+       `**Dominant cost:** <one word>`. Then fill the Latency ledger row.
+
+    Everywhere else in the session report — decisions, trace, gate output, blockers — **no
+    timestamps**. Use the host clock (`date '+%Y-%m-%d %H:%M:%S'`); never invent a time.

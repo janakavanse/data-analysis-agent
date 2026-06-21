@@ -14,17 +14,17 @@ in parallel, one per independent step.
 
 ## Logging — write first, breadcrumb throughout
 
-**Before any other action**, append the step's `## Step N — Executor` header with `Start:`
-timestamp to the session file. This is the very first tool call — not after reading the spec,
-not after running a command. A step that hasn't written to the session file is invisible.
+**Before any other action**, append the step's `## Step N — Executor` header with `**Start:** HH:MM:SS`
+to the session file. First tool call — not after reading the spec, not after running a command.
 
-During the step, **append a breadcrumb line every ~2 minutes**:
+During the step, **append a breadcrumb every ~2 minutes** for long sub-tasks only (`uv sync`,
+`npm install`, writing multiple files, any test run >30s):
 ```
-- HH:MM:SS — [what is happening: installing deps / writing src/model.py / running tests / retrying X]
+- HH:MM:SS — [what is happening right now]
 ```
-Long operations that must breadcrumb: `uv sync`, `npm install`, writing multiple files, any
-test run that takes >30s. The user and supervisor must be able to see progress without waiting
-for the step to finish — a 10-minute black box is a harness failure.
+**Timestamps go only in the session file breadcrumbs and the stage header/footer — nowhere
+else.** Do not add dates or timestamps to `src/`, `README.md`, or any project file. A README
+or source file stamped with a date is a bug, not a log.
 
 ## Preconditions
 
