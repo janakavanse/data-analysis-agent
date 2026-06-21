@@ -56,7 +56,8 @@ These apply to all Python builds using this harness:
 - **Package manager:** `uv` — dependencies in `pyproject.toml`
 - **Entry point:** `src/__main__.py` — starts the server on port 8001
 - **Config:** `src/config.py` using `pydantic-settings`; loaded once, validated at startup
-- **DB migrations:** `alembic` — `alembic upgrade head` is the Phase 1 gate command
+- **Schema:** `create_tables()` at startup (SQLAlchemy `create_all`) — no migrations shipped;
+  add `alembic` only if you need schema evolution
 - **Tests:** `uv run pytest` from the repo root
 - **Linting:** `uv run ruff check .`
 - **Stubs:** `APPNAME_LLM_PROVIDER=stub` env var enables stub mode; stub mode adds a
