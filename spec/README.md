@@ -1,41 +1,47 @@
-# Spec — Single Source of Truth
+# spec/ — the intention layer
 
-This directory is the authoritative specification for this project. All code must match this spec. When spec and code disagree, spec wins — fix the code.
-
-## Status
-
-Check `spec/product/01-vision.md` to see if the spec has been filled in. If it still contains `<!-- FILL IN -->` markers, the spec-writer sub-agent needs to complete it before any application code is written.
-
-## Structure
+The human-authored contract for this project. All code must match this spec; when they
+disagree, spec wins — fix the code. The researcher authors it; the supervisor signs it
+off. See [../harness/README.md](../harness/README.md) for the full SDD method.
 
 ```
 spec/
-  product/            ← What the agent does
-    01-vision.md      ← Purpose, goals, success criteria
-    02-architecture.md← System design, layers, data flow
-    03-capabilities/  ← One file per discrete capability
-    04-data-model.md  ← Data schema
-    05-api.md         ← API surface (REST/GraphQL/CLI/etc.)
-    06-ui.md          ← UI requirements (if any)
-  engineering/        ← How to build it
-    ai-agents.md      ← Rules for ALL AI coding sessions
-    spec-driven.md    ← Spec-first development rule
-    phases.md         ← Phased implementation model
-    tech-stack.md     ← Language, framework, libraries
-    code-style.md     ← Style and structural rules
-    workflows/        ← Repeatable procedures
+  rules/        constraints — tech stack, code style, rule overrides
+  features/     what the system should do — vision, architecture, capabilities
+  patterns/     optional — reusable patterns the coding agent may apply
 ```
 
-## Governance Rules
+---
 
-1. **Spec first** — no code change without a spec backing it
-2. **One fact, one place** — never duplicate facts across spec files; cross-reference with links
-3. **Capabilities are atomic** — each file in `03-capabilities/` describes exactly one discrete thing the agent can do
-4. **No implementation details in product spec** — `spec/product/` describes WHAT, `spec/engineering/` describes HOW
-5. **Update spec before code** — if requirements change, update the spec first, then update the code
+## rules/
 
-## Who Updates the Spec
+Hard constraints for this project. The researcher fills these in at intake.
 
-- **New project:** spec-writer sub-agent drafts, spec-reviewer validates, you approve
-- **New capability:** use the `/spec-new-capability` command or ask the spec-writer directly
-- **Bug in spec:** any team member can open a PR; spec-reviewer must approve
+- [rules/tech-stack.md](rules/tech-stack.md) — language, framework, DB, deploy target
+- [rules/code-style.md](rules/code-style.md) — style rules, framework gotchas
+
+Any overrides to [harness/rules/](../harness/rules/) also live here.
+
+## features/
+
+One file per discrete request. Empty until work begins.
+
+- **FR-NNN-title.md** — feature request, created during `/build`
+- **CR-NNN-title.md** — change request, created during `/fix`
+
+The researcher authors these; the supervisor signs them off before any code is written.
+
+## patterns/
+
+Lateral patterns — cross-cutting concerns that apply broadly across the system
+(e.g. retry strategy, caching approach, observability conventions). Optional;
+the coding agent adds these when a pattern emerges and is worth codifying.
+
+---
+
+## Governance
+
+1. **Spec first** — no `src/` change without a backing spec change.
+2. **One fact, one place** — never duplicate across files; cross-reference with links.
+3. **`features/` = WHAT, `rules/` = HOW + constraints** — no implementation detail in features.
+4. **Update spec before code** — if requirements change, spec changes first.
