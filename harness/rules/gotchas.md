@@ -43,17 +43,31 @@ reference these IDs; see [working-with-llms.md](../patterns/working-with-llms.md
   → Use `pydantic.SecretStr` for every key; record only a boolean in the session report —
   never the value. See [secret-hygiene.md](secret-hygiene.md).
 
-## Databases — PostgreSQL / Alembic
+## Databases — SQLite or DuckDB (local-first, no server)
 
-- **[C-DB-SAME-AS-PROD]** SQLite tests are a lie — passing on `sqlite+aiosqlite` proves
-  nothing about Postgres migrations, JSON columns, or async drivers. A
-  [non-negotiable](non-negotiables.md).
-  → Test against the **production driver**; the recipe `conftest.py` must not swap engines.
+The boilerplate ships **two local stores**; pick by need. There is no Postgres/server recipe —
+add one only on real demand. Both bootstrap schema with `create_tables()` (SQLAlchemy
+`create_all`) at startup — no migrations shipped.
+
+| Need | Store | Recipe |
+|------|-------|--------|
+| Relational / transactional | **SQLite** | `python-fastapi-sqlite` |
+| Analytics (CSV/Parquet/JSON, columnar) | **DuckDB** (+ a SQLite spine for metadata) | `python-fastapi-duckdb` |
+
+- **[C-DB-SAME-AS-PROD]** Test on the **store you actually ship**, never a convenient
+  substitute. Both recipes ship green on their own store (SQLite for the relational recipe,
+  DuckDB + SQLite for the analytics recipe). The classic trap is testing on SQLite while
+  shipping a *different* engine — so if you ever add a server DB, run its tests on that engine,
+  not SQLite. A [non-negotiable](non-negotiables.md).
+
+## Migrations (opt-in — not shipped)
+
+`create_tables()` is enough for a local-first start. If you add Alembic later, these still bite:
 
 - **[C-ALEMBIC]** A missing `alembic/script.py.mako` makes `revision --autogenerate` fail
-  cryptically.
-  → Ship `script.py.mako`; the Phase-1 gate is `revision` → `upgrade head` → `current`, run
-  and confirmed (not assumed).
+  cryptically. → Ship `script.py.mako`; gate on `revision` → `upgrade head` → `current`.
+- **[C-ALTER-DEFAULT]** An `ALTER TABLE … ADD COLUMN NOT NULL` with no default fails on a
+  populated table. → Add a `server_default` (NULL/constant), backfill, then drop it.
 
 ## Databases — DuckDB (analytics / local-first)
 
@@ -85,9 +99,17 @@ reference these IDs; see [working-with-llms.md](../patterns/working-with-llms.md
 - **[C-LLM-FENCE]** Gemini wraps JSON in ```` ```json ```` fences even when told "JSON only."
   → Strip the opening/closing fence lines in `complete()` before `json.loads`.
 
-- **[C-LLM-MODEL]** Model names go stale (`gemini-1.5-flash`, `gemini-2.0-flash` were
-  deprecated / unavailable to new keys).
-  → Default to **`gemini-2.5-flash`**; keep the model in config, never hardcoded.
+- **[C-LLM-MODEL]** Model names go stale *fast* — the Gemini Flash line moved
+  `1.5-flash → 2.0-flash → 2.5-flash → 3.1-flash-lite` across 2025–2026, each break
+  deprecating the last.
+  → Keep the model in config, never hardcoded. `gemini-2.5-flash` is the safe documented
+  default; confirm the current id against the provider / the `claude-api` skill before a real
+  run. See [working-with-llms.md](../patterns/working-with-llms.md) and
+  [usage-specs/google-genai.md](../patterns/usage-specs/google-genai.md).
+
+- **[C-SESSION-COMMIT]** A FastAPI `BackgroundTask` (or any queued async work) that reads a
+  row the request just wrote can race a still-open DB session and see nothing.
+  → Commit the request's session **before** queuing background work that depends on it.
 
 - **[C-STUB]** The offline gate must never call a real model — a green stub run that secretly
   hit the network burns keys and lies about being offline.
@@ -101,6 +123,10 @@ reference these IDs; see [working-with-llms.md](../patterns/working-with-llms.md
 
 - **[C-MD-RENDER]** A GFM table dropped into `<pre>` shows literal `|` and `---`.
   → Render with `react-markdown` (+ `remark-gfm`, with `table`/`th`/`td` overrides), not `<pre>`.
+
+- **[C-MD-XSS]** Enabling raw HTML in a markdown renderer to "make it render" opens an XSS
+  hole — LLM/user content reaches `dangerouslySetInnerHTML`.
+  → Keep `html: false` / no `rehype-raw` on untrusted content; render via the AST, not raw HTML.
 
 - **[C-PLOTLY-SSR]** `react-plotly.js` needs `window` and breaks SSR.
   → `dynamic(() => import('react-plotly.js'), { ssr: false })`.

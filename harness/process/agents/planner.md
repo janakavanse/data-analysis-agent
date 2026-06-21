@@ -63,8 +63,8 @@ Every build starts with these two iterations, then adds project-specific ones:
 1. Copy the **selected recipe** (see Recipe Selection below) to project root
 2. Replace all `appname` / `APPNAME` with the project name
 3. `uv sync --extra dev`
-4. Initialise schema — **stack-conditional**: Postgres → `alembic revision … && alembic upgrade head`;
-   DuckDB → `python -c "from src.db import create_tables; create_tables()"` (no Alembic)
+4. Tables are created automatically at startup (`create_tables()` in the lifespan — both
+   recipes; no migration step, no Alembic)
 5. Update `README.md` (quickstart + `.env` setup) — an Iteration-0 deliverable
 6. Start server, confirm `/health` shows `stub_mode: true`
 
@@ -76,8 +76,8 @@ is exactly how the slowest build lost ~30% of Iteration 0:
 | Approved stack | Recipe | Schema init |
 |----------------|--------|-------------|
 | Analytics, CSV/Parquet/JSON, local-first | `python-fastapi-duckdb` | `create_tables()` at lifespan |
-| Transactional, relational, multi-user | `python-fastapi-postgres` | Alembic migration |
-| UI required | + a `frontend/` flavor from `harness/recipes/` | — |
+| Relational / transactional, local-first | `python-fastapi-sqlite` | `create_tables()` at lifespan |
+| UI required | + `frontend-nextjs` | `npm install` |
 
 ### Iteration 1 — First model (~12 min)
 

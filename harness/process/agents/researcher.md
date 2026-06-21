@@ -94,16 +94,17 @@ After Round 1, propose a tech stack:
 - Language: Python 3.12+ with `uv`
 - Framework: FastAPI
 - Agent framework: LangGraph (if agent loop needed)
-- Database — pick by workload, both are first-class (each has its own recipe):
-  - **DuckDB** (`python-fastapi-duckdb`) — analytics / local-first / CSV-Parquet-JSON-Excel
-  - **PostgreSQL** (`python-fastapi-postgres`) — transactional / multi-user / relational
-- Frontend: Next.js (if UI needed)
+- Database — **local-first, pick by need** (no server DB in the boilerplate):
+  - **SQLite** (`python-fastapi-sqlite`) — relational / transactional
+  - **DuckDB** (`python-fastapi-duckdb`) — analytics / columnar / CSV-Parquet-JSON (+ a SQLite
+    spine for metadata)
+- Frontend: Next.js (`frontend-nextjs`, if UI needed)
 - Deploy: local demo → Render (on request)
 - Port: 8001
 
-The chosen database determines the recipe and the stack-conditional Iteration 0 (DuckDB has
-no Alembic step) — record it in `spec/rules/tech-stack.md` so the planner selects the right
-scaffold. See [recipes](../../recipes/) and [gotchas.md](../../rules/gotchas.md).
+The chosen store determines the recipe; both bootstrap schema via `create_tables()` at startup
+(no migrations shipped). Record it in `spec/rules/tech-stack.md` so the planner selects the
+right scaffold. See [recipes](../../recipes/) and [gotchas.md](../../rules/gotchas.md).
 
 ### API key collection
 

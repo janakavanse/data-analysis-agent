@@ -64,15 +64,14 @@ Implements exactly one iteration per invocation. No more.
 table in `planner.md`). Copying the *wrong* recipe is exactly how the slow build lost — the
 recipe must match the approved stack:
 
-1. Copy the **selected** recipe to the project root:
-   - DuckDB / analytics → `harness/recipes/python-fastapi-duckdb/`
-   - PostgreSQL / transactional → `harness/recipes/python-fastapi-postgres/`
+1. Copy the **selected** recipe to the project root (the planner names it):
+   - Relational / transactional → `harness/recipes/python-fastapi-sqlite/`
+   - Analytics (CSV/Parquet/JSON) → `harness/recipes/python-fastapi-duckdb/`
+   - (+ `harness/recipes/frontend-nextjs/` if the FR needs a UI)
 2. Replace all `appname` / `APPNAME` occurrences with the project name
 3. `uv sync --extra dev`
-4. Initialise the schema — **conditional on the recipe**:
-   - Postgres recipe → `uv run alembic revision --autogenerate -m "init"` → `alembic upgrade head`
-   - DuckDB recipe → `uv run python -c "from src.db import create_tables; create_tables()"`
-     (no Alembic; see [gotchas.md](../../rules/gotchas.md) C-DUCKDB-VIEW)
+4. Tables are created automatically at startup — `create_tables()` in the lifespan (both
+   recipes; no migration step, no Alembic). See [gotchas.md](../../rules/gotchas.md) C-DUCKDB-VIEW.
 5. Confirm `curl http://localhost:8001/health` returns 200 with `stub_mode: true`
 6. **Update `README.md`** — name, one-line description, prerequisites, exact `uv sync` +
    run quickstart, `.env` setup. README is an Iteration-0 deliverable, never deferred

@@ -38,9 +38,10 @@ tests/           all tests
   unit/          fast, no network, no DB
   integration/   requires DB; automated setup via conftest.py
   e2e/           golden-path smoke tests
+evals/           golden cases (input + approved output) + threshold + runner — same defs local/gate/CI
 
 logs/            gitignored — runtime/, sessions/, analysis/
-harness/         the method — rules/, process/, patterns/
+harness/         the method — rules/, process/, patterns/, recipes/
 .claude/         thin Claude Code adapter
 CLAUDE.md        entry point
 README.md        what this project is — overview, setup, usage, config, dev
