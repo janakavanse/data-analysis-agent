@@ -11,6 +11,7 @@ All tools fail SOFT (return an error string, never raise) so the model can recov
 tool spans (harness/patterns/observability-and-evals.md).
 """
 import json
+import os
 
 from langchain_core.tools import tool
 
@@ -60,16 +61,35 @@ def get_dataset_schema(dataset_id: str, table: str = "") -> str:
 
 
 @tool
-def execute_sql(dataset_id: str, sql: str) -> str:
+def execute_sql(dataset_id: str, sql: str, confirmed_large: bool = False) -> str:
     """Run ONE read-only SQL SELECT against a dataset and return the result rows as JSON.
 
     Read-only only (SELECT / WITH). INSERT/UPDATE/DELETE/DROP/ALTER/CREATE are refused.
     Use exact table/column names from get_dataset_schema. Aggregate for a single number;
     add LIMIT when returning rows. Results capped at the configured row limit.
+
+    confirmed_large: set to True to proceed when the dataset file is > 100 MB.
+    When the dataset is > 100 MB and confirmed_large is False, this tool returns a
+    LARGE_FILE_WARNING JSON object instead of executing. The caller must surface the
+    warning to the user and only call execute_sql again with confirmed_large=True after
+    the user explicitly confirms they want to proceed.
     """
     ok, reason = validate_read_only(sql)
     if not ok:
         return f"REFUSED (read-only queries only): {reason}"
+
+    # Large-file check BEFORE execution
+    path = duck.dataset_path(dataset_id)
+    if os.path.exists(path):
+        size_mb = os.path.getsize(path) / (1024 * 1024)
+        if size_mb > 100 and not confirmed_large:
+            return json.dumps({
+                "warning": f"LARGE_FILE_WARNING: Dataset file is {size_mb:.1f} MB (> 100 MB limit). "
+                           f"This query will scan the full file. "
+                           f"Call execute_sql again with confirmed_large=True to proceed, "
+                           f"or inform the user the query was cancelled."
+            })
+
     settings = get_settings()
     result = duck.run_query(dataset_id, sql, settings.max_query_rows)
     if "error" in result:
@@ -155,6 +175,10 @@ def finish(answer: str, chart_spec: str = "") -> str:
 
     answer: the prose answer — lead with the direct result, cite the SQL if relevant.
     chart_spec: optional — the JSON string from generate_chart_spec. Omit if no chart was generated.
+
+    IMPORTANT: if execute_sql returned a LARGE_FILE_WARNING, include the warning text in
+    answer and ask the user to confirm before proceeding. Do NOT call execute_sql with
+    confirmed_large=True until the user explicitly confirms in a follow-up message.
     """
     return answer
 
