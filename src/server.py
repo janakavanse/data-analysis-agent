@@ -208,8 +208,43 @@ async def create_dataset(body: DatasetIn):
 @app.get("/datasets")
 async def list_datasets_endpoint():
     async with get_sessionmaker()() as s:
-        rows = (await s.execute(select(Dataset).order_by(Dataset.created_at.desc()))).scalars().all()
-    return ok([{"id": d.id, "name": d.name} for d in rows])
+        datasets = (await s.execute(select(Dataset).order_by(Dataset.created_at.desc()))).scalars().all()
+        ds_ids = [d.id for d in datasets]
+        tables: list[DataTable] = []
+        if ds_ids:
+            tables = (await s.execute(
+                select(DataTable).where(DataTable.dataset_id.in_(ds_ids))
+            )).scalars().all()
+
+    # Group DataTable rows by dataset_id
+    from collections import defaultdict
+    tables_by_ds: dict[str, list[DataTable]] = defaultdict(list)
+    for t in tables:
+        tables_by_ds[t.dataset_id].append(t)
+
+    result = []
+    for d in datasets:
+        dt_rows = tables_by_ds.get(d.id, [])
+        # Derive file_format from the first file's extension; empty string if no files yet
+        file_format = ""
+        upload_timestamp = None
+        row_count = 0
+        if dt_rows:
+            # Sort by created_at ascending so first upload is deterministic
+            dt_rows_sorted = sorted(dt_rows, key=lambda t: t.created_at)
+            first = dt_rows_sorted[0]
+            ext = os.path.splitext(first.filename)[1].lstrip(".")
+            file_format = ext.lower() if ext else ""
+            upload_timestamp = first.created_at.isoformat()
+            row_count = sum(t.n_rows for t in dt_rows)
+        result.append({
+            "id": d.id,
+            "name": d.name,
+            "file_format": file_format,
+            "row_count": row_count,
+            "upload_timestamp": upload_timestamp,
+        })
+    return ok(result)
 
 
 @app.post("/datasets/{dataset_id}/files")

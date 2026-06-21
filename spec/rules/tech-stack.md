@@ -75,8 +75,8 @@ Frontend:
 |---------|---------|---------|
 | next | 15 | Frontend framework |
 | react | 18 | UI components |
-| chart.js | latest | Chart rendering |
-| react-chartjs-2 | latest | React bindings for Chart.js |
+| plotly.js | latest | Chart rendering (react-plotly.js) |
+| react-plotly.js | latest | React bindings for Plotly |
 
 ## What to Avoid
 
