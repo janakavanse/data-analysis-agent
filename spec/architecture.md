@@ -1,6 +1,6 @@
 # Architecture
 
-> **Boilerplate status:** Filled in by the spec-writer sub-agent after the product spec is approved.
+> Fill in this section — see comments below.
 
 ---
 

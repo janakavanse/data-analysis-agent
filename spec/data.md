@@ -1,6 +1,6 @@
 # Data Model
 
-> **Boilerplate status:** Filled in by the spec-writer sub-agent after architecture is approved.
+> Fill in this section — see comments below.
 
 ---
 

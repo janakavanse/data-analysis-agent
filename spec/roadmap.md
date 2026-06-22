@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Boilerplate status:** This file contains placeholders. The spec-writer sub-agent will fill these in based on your idea. Run `/zero-shot-build [your idea]` to start, or fill in the placeholders manually.
+> Fill in each section. Run `/zero-shot-build [your idea]` to have it filled automatically.
 
 ---
 

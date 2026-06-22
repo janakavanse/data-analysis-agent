@@ -1,6 +1,6 @@
 # API
 
-> **Boilerplate status:** Filled in by the spec-writer sub-agent. Delete this file if the agent has no external API surface (e.g., it's a pure CLI tool or background worker).
+> Fill in this section — see comments below.
 
 ---
 
