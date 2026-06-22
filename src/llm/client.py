@@ -1,6 +1,6 @@
 import anthropic
 
-from agent.config.settings import get_settings
+from config.settings import get_settings
 
 
 class LLMClient:

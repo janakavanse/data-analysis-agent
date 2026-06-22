@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from agent.api._common import ok, api_error
-from agent.db.session import get_session
-from agent.db.models import RunRow
-from agent.domain.run import RunRequest, RunResponse
-from agent.graph.runner import run_agent
+from api._common import ok, api_error
+from db.session import get_session
+from db.models import RunRow
+from domain.run import RunRequest, RunResponse
+from graph.runner import run_agent
 
 router = APIRouter()
 

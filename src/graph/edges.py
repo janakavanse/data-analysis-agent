@@ -1,4 +1,4 @@
-from agent.graph.state import AgentState
+from graph.state import AgentState
 
 
 def after_transform(state: AgentState) -> str:

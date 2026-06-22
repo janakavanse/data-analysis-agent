@@ -1,8 +1,8 @@
 from langgraph.graph import StateGraph, END
 
-from agent.graph.state import AgentState
-from agent.graph.nodes import transform_text, handle_error, finalize
-from agent.graph.edges import after_transform
+from graph.state import AgentState
+from graph.nodes import transform_text, handle_error, finalize
+from graph.edges import after_transform
 
 
 def _build_graph() -> StateGraph:

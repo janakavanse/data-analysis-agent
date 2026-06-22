@@ -1,7 +1,7 @@
-from agent.graph.agent import agentic_ai
-from agent.graph.state import AgentState
-from agent.db.session import create_db_session, init_db
-from agent.db.models import RunRow
+from graph.agent import agentic_ai
+from graph.state import AgentState
+from db.session import create_db_session, init_db
+from db.models import RunRow
 
 
 def run_agent(input_text: str) -> str:

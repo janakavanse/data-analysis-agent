@@ -1,9 +1,9 @@
 import pytest
 from sqlalchemy.orm import Session
 
-from agent.graph.runner import run_agent
-from agent.db import session as session_module
-from agent.db.models import RunRow
+from graph.runner import run_agent
+from db import session as session_module
+from db.models import RunRow
 
 
 @pytest.mark.usefixtures("_require_api_key")

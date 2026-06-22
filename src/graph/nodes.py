@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from agent.graph.state import AgentState
-from agent.llm.client import LLMClient
+from graph.state import AgentState
+from llm.client import LLMClient
 
 _PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "transform.md"
 

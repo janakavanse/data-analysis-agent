@@ -11,7 +11,7 @@ _SessionLocal: sessionmaker | None = None
 def _get_engine() -> Engine:
     global _engine
     if _engine is None:
-        from agent.config.settings import get_settings
+        from config.settings import get_settings
         _engine = create_engine(get_settings().database_url, echo=False)
     return _engine
 
@@ -47,5 +47,5 @@ def create_db_session() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    from agent.db.models import Base
+    from db.models import Base
     Base.metadata.create_all(bind=_get_engine())

@@ -7,14 +7,14 @@ from fastapi.staticfiles import StaticFiles
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    from agent.db.session import init_db
+    from db.session import init_db
     init_db()
     yield
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Agent", version="0.1.0", lifespan=_lifespan)
-    from agent.api import health, runs
+    from api import health, runs
     app.include_router(health.router)
     app.include_router(runs.router)
 

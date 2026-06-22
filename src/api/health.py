@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from agent.api._common import ok
+from api._common import ok
 
 router = APIRouter()
 
