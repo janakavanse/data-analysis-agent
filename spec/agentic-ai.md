@@ -32,7 +32,7 @@
 |-------------|----------|----------|-----------|
 | <!-- node --> | Anthropic | <!-- e.g. claude-sonnet-4-6 --> | <!-- latency vs. quality trade-off --> |
 
-**Fallback behaviour:** <!-- What happens if the LLM API is unavailable or rate-limited? -->
+**Fallback behaviour:** <!-- Production resilience only: retry/backoff, degraded mode, or a surfaced error if the LLM API is unavailable or rate-limited. NOT a test/offline stub path — tests call the real API with keys from `.env`. -->
 
 **Prompt strategy:** <!-- System/user split, few-shot examples, structured output (tool_use / JSON mode)? -->
 

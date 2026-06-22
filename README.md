@@ -10,9 +10,11 @@ A starting point for anyone who wants to build an AI agent without writing boile
 
 - A structured **spec template** covering product vision, architecture, capabilities, data model, API, and UI
 - Three **zero-shot skills** (`/zero-shot-build`, `/zero-shot-fix`, `/zero-shot-sync`), each also available as a slash command
-- An eight-agent **team** — agent-builder orchestrates spec-writer, spec-reviewer, tech-architect, code-generator, code-reviewer, qa-auditor, and deployer (makers paired with checkers)
+- A five-agent **team** — agent-builder orchestrates (and owns git/PR) spec-writer, tech-architect, code-generator, and qa-auditor; the code maker is paired with an independent checker (qa-auditor reviews *and* runs), spec and tech design self-review
 - Engineering rules in `harness/` so every Claude Code session is consistent
 - Phase-gated implementation — minimal working thing first, then iterative expansion
+- Autonomous after a single intake round: one prompt → a thoroughly-tested agent with no further interaction
+- Real-key testing — every phase gate runs against the live LLM/API using keys from `.env`
 
 ---
 
@@ -38,38 +40,36 @@ claude
 /zero-shot-build An agent that monitors my Shopify store for low-inventory products and automatically drafts restock emails to suppliers
 ```
 
-`/zero-shot-build` asks 4 questions up front, then runs autonomously to a working skeleton.
+`/zero-shot-build` asks a short round of intake questions up front — including which API keys to put in `.env` — then runs fully autonomously to a tested, working agent with no further interaction.
 
 ---
 
-## What Happens Next (Intake, Then Automated)
+## What Happens Next (Intake, Then Fully Automated)
 
-`/zero-shot-build` runs intake + approval, then hands off to the **agent-builder**, which coordinates the team:
+`/zero-shot-build` runs one intake round, then hands off to the **agent-builder**, which coordinates the team:
 
 ```
 Your idea
     ↓
-INTAKE — 4 questions (scope, stack, trigger, constraints)          [skill]
+INTAKE — scope, stack, trigger, constraints; fill .env with the required API keys
+         (may ask extra clarifying questions up front)
     ↓
-[spec-writer]    → Drafts the product spec (ruthless MVP scope)
-[spec-reviewer]  → Independent review → back to spec-writer on blockers
+[spec-writer]    → Drafts AND self-reviews the product spec (ruthless MVP scope)
     ↓
 [tech-architect] → Designs AND reviews stack / architecture / agentic-ai / plan
     ↓
-ONE APPROVAL — you see scope + stack + plan; approve once          [skill]
+[agent-builder]  → Feature branch + PR before the first commit
     ↓
-[deployer]       → Feature branch + PR before the first commit
-    ↓
-per phase:  [code-generator] → [code-reviewer] → [qa-auditor] → [deployer]
-            write code+tests    critique         run gates       commit+push
-            ↑___________ loop until reviewed clean AND VERIFIED ___________↑
+per phase:  [code-generator] → [qa-auditor] → [agent-builder]
+            write code+tests    review + run    commit+push
+            ↑______ loop until reviewed clean AND VERIFIED ______↑
     ↓
 [qa-auditor]     → Final spec↔code drift audit (CLEAN before hand-off)
     ↓
 Hand-off to you
 ```
 
-**Nothing is skipped.** A phase stays open until code-reviewer is clean and qa-auditor returns VERIFIED. After the build, fix bugs with `/zero-shot-fix` and keep spec and code aligned with `/zero-shot-sync`.
+**Nothing is skipped.** A phase stays open until qa-auditor's code review is clean and it returns VERIFIED — meaning edge-case, end-to-end, and UI tests pass against the real LLM/API using keys from `.env`, "perfect, zero errors" (~20-30 min to a thoroughly-tested agent). After the build, fix bugs with `/zero-shot-fix` and keep spec and code aligned with `/zero-shot-sync`.
 
 ---
 
@@ -78,13 +78,13 @@ Hand-off to you
 | Phase | What Gets Built |
 |-------|-----------------|
 | 1 | Domain models + data layer |
-| 2 | Core agent loop (no integrations, stubbed tools) |
-| 3 | First real integration (the "happy path" end-to-end) |
+| 2 | Core agent loop wired to the real LLM (keys from `.env`); integrations stubbed only where the external system itself isn't built yet |
+| 3 | First real integration (the "happy path" end-to-end, real keys) |
 | 4 | Error handling, retries, resilience |
 | 5 | Remaining integrations |
 | 6 | API / CLI surface |
-| 7 | Basic UI (if needed) |
-| 8 | Integration tests |
+| 7 | Basic UI (if needed) — UI tests required when a UI exists |
+| 8 | Integration + edge-case + end-to-end tests (real keys) |
 | 9 | Observability + logging |
 | 10 | Polish, documentation, hand-off |
 
@@ -98,13 +98,14 @@ Each phase ends with a commit and passes QA before the next phase begins.
 .claude/
   skills/           ← Entry points (/zero-shot-build, /zero-shot-fix, /zero-shot-sync) — source of truth
   commands/         ← Thin slash-command aliases that defer to the skills
-  agents/           ← The team (agent-builder, spec-writer, spec-reviewer, tech-architect, code-generator, code-reviewer, qa-auditor, deployer)
+  agents/           ← The team, one full self-contained definition each (agent-builder, spec-writer, tech-architect, code-generator, qa-auditor)
 spec/               ← What your agent does (fill this in or let /zero-shot-build do it)
   capabilities/     ← One file per discrete capability
   tech-stack.md     ← Language, framework, libraries
   code-style.md     ← Style and structural rules
-harness/            ← How Claude Code should build for this project (immutable rules)
-  workflows/        ← Step-by-step procedures for each agent/workflow type
+harness/            ← How Claude Code should build for this project (doctrine the skills/agents cite)
+  rules/            ← Mandatory rules (ai-agents, git, secret-hygiene)
+  patterns/         ← Repeatable patterns (phases, test-driven, project-layout, …)
 reports/
   sessions/         ← Auto-generated session logs from every AI coding session
 CLAUDE.md           ← Entry point for Claude Code
@@ -132,6 +133,8 @@ Every Claude Code session in this repo follows the rules in `harness/rules/ai-ag
 - Commit every logical unit of work (never accumulate uncommitted changes)
 - One phase at a time — no skipping
 - Write tests before marking a phase complete
+- Tests and evals run against the real LLM/API using keys from `.env` — offline/stubbed runs are not a passing gate
+- The build is non-interactive after intake — questions are asked once, up front
 - Update this README whenever the project layout changes
 
 ---
@@ -164,4 +167,4 @@ The recommended way to iterate on this boilerplate:
 
 ## Contributing
 
-This is a boilerplate, not a framework. Improvements to the spec templates, engineering rules, agent definitions, or workflow specs belong on `main`. Generated application code does not.
+This is a boilerplate, not a framework. Improvements to the spec templates, engineering rules, agent definitions, or skills belong on `main`; generated application code does not (see Test-Branch Workflow above).

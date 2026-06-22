@@ -42,7 +42,7 @@ spec/code-style.md
 
 ## If the Spec Is Not Ready
 
-Tell the user to run **`/zero-shot-build [their idea]`**. That skill runs one intake round and a single approval, then hands the build to the **agent-builder** orchestrator, which coordinates the team to a verified skeleton autonomously.
+Tell the user to run **`/zero-shot-build [their idea]`**. That skill runs one intake round — the only interactive step. It may ask additional clarifying questions, and asks the user to fill `.env` with the required API keys/secrets. Once intake completes, the **agent-builder** orchestrator runs design → scaffold → build → ship autonomously to a perfectly-working, thoroughly-tested agent, with zero further user interaction.
 
 ## Skills (entry points)
 
@@ -60,23 +60,19 @@ These are the entry points. All are manual (`disable-model-invocation: true`). E
 - Never skip a phase — complete phase N before starting phase N+1
 - Commit every logical unit of work; never let the working tree stay dirty
 - Update `reports/sessions/` at the start and end of every session
-- When in doubt, ask — do not guess requirements
+- Tests and evals run against the real LLM/API using keys from `.env` — never gate the build on offline/stubbed runs
+- When in doubt, ask at intake — do not guess requirements; once intake completes, build autonomously without further prompts
 
 ## Sub-agents (the team)
 
-`/zero-shot-build` delegates a full build to **agent-builder**, which coordinates the rest. `/zero-shot-fix` and `/zero-shot-sync` call the workers directly (no agent-builder). Makers are paired with independent checkers.
+`/zero-shot-build` delegates a full build to **agent-builder**, which coordinates the rest and owns git/PR. `/zero-shot-fix` and `/zero-shot-sync` call the workers directly (no agent-builder) and own git themselves. Each agent is one full, self-contained definition at `.claude/agents/<name>.md` (the path is the agent slug).
 
-**Each agent is defined twice:** a thin registry stub at `.claude/agents/<name>.md` (frontmatter the Agent tool needs + a pointer) and its **detailed, canonical definition** at `harness/agents/<name>.md`. The stub is what gets invoked; the harness file is the source of truth for behaviour — edit there. See `harness/agents/README.md` for the index.
+| Agent | Role | Tools |
+|-------|------|-------|
+| agent-builder | Orchestrator — coordinates the team and owns the git/PR surface for a build | read/bash/agent |
+| spec-writer | Write the product spec **and** self-review it | read/write |
+| tech-architect | Design **and** review stack/architecture/agentic-ai/plan | read/write |
+| code-generator | Write code + tests for one phase / one fix | read/write/bash |
+| qa-auditor | Independent code review **and** run gates/tests/app **and** audit spec↔code drift | read-only (bash) |
 
-| Agent | Detailed definition | Role | Tools |
-|-------|---------------------|------|-------|
-| agent-builder | `harness/agents/agent-builder.md` | Orchestrator — coordinates the team for a full build | read/bash/agent |
-| spec-writer | `harness/agents/spec-writer.md` | Write the product spec | read/write |
-| spec-reviewer | `harness/agents/spec-reviewer.md` | Independent spec review | read-only |
-| tech-architect | `harness/agents/tech-architect.md` | Design **and** review stack/architecture/agentic-ai/plan | read/write |
-| code-generator | `harness/agents/code-generator.md` | Write code + tests for one phase / one fix | read/write/bash |
-| code-reviewer | `harness/agents/code-reviewer.md` | Independent code review (logic, security, spec-fidelity) | read-only |
-| qa-auditor | `harness/agents/qa-auditor.md` | Run gates/tests/app **and** audit spec↔code drift | read-only (bash) |
-| deployer | `harness/agents/deployer.md` | Branch, commit, push, PR — owns the git surface | read-only (bash) |
-
-Pattern: maker → checker. spec-writer↔spec-reviewer, code-generator↔code-reviewer; tech-architect is a combined design+review role; qa-auditor runs (it never edits); deployer owns version control.
+Pattern: maker → checker on the highest-stakes surface — code-generator writes, **qa-auditor** independently reviews it (logic/security/spec-fidelity) *and* runs the gates. spec-writer and tech-architect each self-review (design altitude is lower-risk). agent-builder orchestrates and owns git; qa-auditor never edits.

@@ -83,7 +83,7 @@ Current safe defaults (as of 2026):
 |----------|---------------|-------|
 | Google Gemini | `gemini-2.5-flash` | `gemini-2.0-flash` and `gemini-1.5-flash` unavailable for new users |
 | OpenAI | `gpt-4o-mini` | |
-| Anthropic | `claude-3-5-haiku-latest` | |
+| Anthropic | `claude-sonnet-4-6` | matches `.env.example`; verify against current docs before pinning |
 
 ### DB Driver Rule
 
@@ -119,3 +119,11 @@ def _setup_test_db():
 ```
 
 The `DATABASE_URL` in `.env` (or `.env.test`) must point at a real PostgreSQL test database before running tests.
+
+### LLM / API Test Rule
+
+**Tests and evals run against the real LLM/API using keys loaded from `.env`.** There is no offline-passing requirement; real-key execution is the default and required path for every gate, against the production DB driver (never SQLite if production is PostgreSQL). A stub provider MAY exist as an optional local fallback when a key is genuinely absent, but it is never the gate. The quality bar is perfect, zero errors — edge-case, end-to-end, and UI tests are required, not optional.
+
+- The build and tests load keys programmatically from `.env` (gitignored); confirm a key by presence (bool) only — never echo, print, paste, or commit a secret value.
+- A stub is permitted only for an integration whose external system isn't built yet — never as a substitute for the real provider on a path that exists.
+- **CI contract:** a runner without secrets cannot pass the real-key gate. Either inject the keys from a secret store, or guard the real-key tests with `pytest.skip` when keys are unset. Skipped is not passed: the Phase 2+ gate is BLOCKED if a required key is missing locally.
