@@ -19,9 +19,10 @@ Intake captures scope, stack, trigger, and constraints, MAY ask additional clari
 3. Ask **one round** of questions via `AskUserQuestion` (add clarifiers if underspecified):
    - **MVP scope** — minimum to call it working?
    - **Stack** — language, database, hosting? ("no preference" → sensible defaults, documented as an assumption; no later user round to confirm).
+   - **LLM provider** — offer these options: **OpenRouter**, **Gemini (API key)**, **Anthropic (API key)**, **Other**. (Drives which key the user sets and the default model from `harness/patterns/tech-stack.md`.)
    - **Output/trigger** — how invoked, what produced?
-   - **Key constraints** — provider/API keys held, hard no's, compliance, systems to integrate.
-4. **API keys.** Identify which provider/API keys the agent needs. Ask the user to fill `.env` (from `.env.example`) with the real keys/secrets — this is the only manual user step. The build and tests load these keys programmatically from `.env` (gitignored) and use them for all tests and evals; confirm keys by presence (bool) only — never echo, print, paste, or commit a secret value.
+   - **Key constraints** — hard no's, compliance, systems to integrate.
+4. **API key** (the only manual user step). Based on the chosen provider, tell the user to set the matching key in `.env` (from `.env.example`): `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` (for **Other**, ask which env var + base URL). The build and tests load the key programmatically from `.env` (gitignored) and use it for all tests and evals; confirm by presence (bool) only — never echo, print, paste, or commit a secret value.
 5. Synthesize answers into a one-paragraph brief. ("Just build it" → narrow MVP, Python + PostgreSQL defaults, documented as assumptions.)
 
 ## Stage 2 — Build (delegate, fully autonomous)
