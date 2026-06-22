@@ -42,7 +42,7 @@ Phase 1 is the smallest working win: real on the one core path, with clearly-lab
 1. Load the question tool: `ToolSearch` with query `select:AskUserQuestion` (before asking).
 2. Present the test-handoff as concrete steps: the **exact run commands**, **what to click / what to look at**, the **expected result**, and which parts are **labelled stubs vs real** (so a stub is never mistaken for a bug).
 3. Ask via `AskUserQuestion`: **"Does Phase 1 work as you expected?"** → options **"Yes — continue to Phase 2"** / **"I hit an issue"**.
-4. **On "I hit an issue":** capture what the user saw, then invoke **qa-auditor** to diagnose and CLASSIFY the root cause (SPEC vs CODE, and which surface). Route the fix: SPEC → spec-writer rewrites the spec, then the responsible generator(s) redo the code; CODE → the responsible **frontend-code-generator** and/or **backend-code-generator** fixes the surface. Re-gate with qa-auditor, commit + push the fix yourself, then **re-present** the gate. Loop until the user is satisfied.
+4. **On "I hit an issue":** capture what the user saw, then invoke **qa-auditor** to diagnose and CLASSIFY the root cause (SPEC vs CODE, and which surface). Route the fix: SPEC → spec-writer rewrites the spec, then the responsible generator(s) redo the code; CODE → the responsible **code-generator** and/or **code-generator** fixes the surface. Re-gate with qa-auditor, commit + push the fix yourself, then **re-present** the gate. Loop until the user is satisfied.
 5. **On "Yes":** proceed to Stage 4.
 
 ## Stage 4 — Per remaining phase (build → gate, repeat)

@@ -64,16 +64,25 @@ These are the entry points. All are manual (`disable-model-invocation: true`). E
 - Tests and evals run against the real LLM/API using keys from `.env` — never gate the build on offline/stubbed runs
 - When in doubt, ask at intake — do not guess requirements; once intake completes, build a phase autonomously and stop for the human testing gate
 
+## The skeleton in `src/`
+
+`src/agent/` is the **opinionated baseline** — a working FastAPI + LangGraph + SQLite + Anthropic agent whose capability slot is `transform_text`. Tests pass out of the box. Generators extend this in place — they never copy or rename. The capability slot is:
+
+- `src/agent/graph/nodes.py` — `transform_text` node → replace with your capability logic
+- `src/agent/prompts/transform.md` → replace with your system prompt
+- `frontend/src/app/page.tsx` → replace the transform form with your UI
+
+Everything else (graph structure, runner, API, DB session, settings, test fixtures) is already wired and tested — do not change it unless the spec requires it.
+
 ## Sub-agents (the team)
 
-`/zero-shot-build` delegates a full build to **agent-builder**, which coordinates the rest and owns git/PR. `/zero-shot-fix` and `/zero-shot-sync` call the workers directly (no agent-builder) and own git themselves. Each agent is one full, self-contained definition at `.claude/agents/<name>.md` (the path is the agent slug).
+`/zero-shot-build` delegates a full build to **agent-builder**, which plans and coordinates the rest and owns git/PR. `/zero-shot-fix` and `/zero-shot-sync` call the workers directly (no agent-builder) and own git themselves. Each agent is one full, self-contained definition at `.claude/agents/<name>.md` (the path is the agent slug).
 
 | Agent | Role | Tools |
 |-------|------|-------|
-| agent-builder | Orchestrator — fans out the specialists, coordinates the team, and owns the git/PR surface for a build | read/bash/agent |
+| agent-builder | Orchestrator — plans phases, fans out code-generator instances per slice (in parallel), and owns the git/PR surface for a build | read/bash/agent |
 | spec-writer | The single design authority — writes the FULL spec (incl. architecture + agent-graph + phased plan) **and** self-reviews it | read/write |
-| frontend-code-generator | Build ONE UI slice — runs in parallel with other slices | read/write/bash |
-| backend-code-generator | Build ONE backend slice in `src/` (api, db, graph, llm, tools, prompts, observability) — runs in parallel | read/write/bash |
+| code-generator | Implements ONE independent slice (backend `src/`, frontend `frontend/`, or both) plus tests — spawned in parallel, one per slice | read/write/bash |
 | qa-auditor | Independent review **and** run gates/tests/app **and** audit spec↔code drift; runs FIRST in fix/sync and classifies root cause SPEC-vs-CODE | read-only (bash) |
 
-Pattern: **spec-writer** is the single design authority — it writes the whole spec (architecture + agent-graph + phased plan) and self-reviews (design altitude is lower-risk). Once the spec is done, **frontend-code-generator** and **backend-code-generator** build independent slices **in parallel** (disjoint paths — frontend writes the UI surface, backend writes `src/`; never the same file). **qa-auditor** independently gates each slice and audits drift — it never edits. **agent-builder** orchestrates the fan-out and owns git/PR. The **human tests between phases**.
+Pattern: **spec-writer** writes the whole spec and carves each phase into independent slices. **agent-builder** fans out one **code-generator** per slice in a single Agent message (max parallelism — disjoint paths, never conflict). **qa-auditor** independently gates each slice and audits drift — it never edits. The **human tests between phases**.

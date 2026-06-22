@@ -8,7 +8,7 @@ allowed-tools: Bash(git*) Bash(uv run*)
 
 You orchestrate a spec↔code sync by calling worker agents directly. **Spec is the source of truth — when spec and code disagree, fix the code** (harness/patterns/spec-driven.md). Optional scope in `$ARGUMENTS`; otherwise the whole project. Run autonomously to a CLEAN audit; pause only on a hard blocker or if a divergence reveals the *spec* is wrong (surface it — don't silently rewrite the spec to match code).
 
-**qa-auditor runs FIRST** — read-only, it finds and classifies every divergence and its direction; its verdict routes each fix to the responsible **frontend-code-generator** and/or **backend-code-generator** by surface. You (the skill) own the commit + push.
+**qa-auditor runs FIRST** — read-only, it finds and classifies every divergence and its direction; its verdict routes each fix to the responsible **code-generator** and/or **code-generator** by surface. You (the skill) own the commit + push.
 
 ## Step 1 — Audit (qa-auditor first, drift mode)
 
@@ -26,8 +26,8 @@ Handle High severity first, then Medium; Low only if in scope.
 ## Step 3 — Reconcile code (routed by surface, parallel where independent)
 
 Group the "code wrong" divergences **by surface**, then invoke the responsible generator per group:
-- **backend-code-generator** — divergences in `src/` (api, db, graph, llm, tools, prompts, observability).
-- **frontend-code-generator** — divergences in the frontend/UI surface.
+- **code-generator** — divergences in `src/` (api, db, graph, llm, tools, prompts, observability).
+- **code-generator** — divergences in the frontend/UI surface.
 
 Independent groups (disjoint paths) run **concurrently**. Give each generator the spec section + the offending file(s); it edits code to match the spec and adds/updates a test asserting the spec'd behavior. Group divergences that touch the same files into one invocation.
 

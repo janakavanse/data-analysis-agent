@@ -8,7 +8,7 @@ allowed-tools: Bash(git*) Bash(uv run*)
 
 You orchestrate a targeted fix by calling worker agents directly — no full agent-builder needed. The target is in `$ARGUMENTS` (if empty, ask what's broken). Run autonomously: diagnose+classify → fix → verify, looping until the failure signal is gone. Pause only on a hard blocker or explicit request.
 
-**qa-auditor runs FIRST** — it diagnoses, captures the failing signal, and CLASSIFIES the root cause (SPEC vs CODE, and which surface). Its verdict ROUTES the fix and names which generator. Fixing happens in the **frontend-code-generator** and/or **backend-code-generator** (picked by surface); judging happens in read-only **qa-auditor**; you (the skill) own the commit + push.
+**qa-auditor runs FIRST** — it diagnoses, captures the failing signal, and CLASSIFIES the root cause (SPEC vs CODE, and which surface). Its verdict ROUTES the fix and names which generator. Fixing happens in the **code-generator** and/or **code-generator** (picked by surface); judging happens in read-only **qa-auditor**; you (the skill) own the commit + push.
 
 ## Step 1 — Diagnose + classify (qa-auditor first)
 
@@ -31,7 +31,7 @@ Done-when, by signal:
 ## Step 2 — Fix (routed by the verdict)
 
 - **SPEC root cause** → invoke **spec-writer** to rewrite the spec section, then invoke the responsible generator(s) to redo the code toward the corrected spec.
-- **CODE root cause** → invoke the responsible generator(s) directly — **backend-code-generator** for `src/` (api, db, graph, llm, tools, prompts, observability), **frontend-code-generator** for the frontend/UI surface. Both can run concurrently if the fix spans both surfaces (disjoint paths).
+- **CODE root cause** → invoke the responsible generator(s) directly — **code-generator** for `src/` (api, db, graph, llm, tools, prompts, observability), **code-generator** for the frontend/UI surface. Both can run concurrently if the fix spans both surfaces (disjoint paths).
 
 Give the generator the precise target, the responsible files, and the spec sections defining correct behavior. It fixes toward spec intent and adds/updates a regression test (for an LLM/API bug, the regression test uses real keys from `.env`). It must not mute a test or delete an assertion to go green; if spec and test genuinely conflict, it stops and reports (likely a spec bug → re-run Step 1 as SPEC, or suggest `/zero-shot-sync`).
 

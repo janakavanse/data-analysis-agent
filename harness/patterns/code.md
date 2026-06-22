@@ -1,6 +1,6 @@
 # Code Style
 
-> Generic code conventions that apply to **every** project — harness doctrine the frontend-code-generator and backend-code-generator follow, not a per-project file. The language-specific sections are reference; this project's chosen language/stack is in `spec/architecture.md` (`## Stack`).
+> Generic code conventions that apply to **every** project — harness doctrine the code-generator and code-generator follow, not a per-project file. The language-specific sections are reference; this project's chosen language/stack is in `spec/architecture.md` (`## Stack`).
 
 ---
 

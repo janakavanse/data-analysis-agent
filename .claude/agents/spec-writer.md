@@ -112,7 +112,7 @@ Fix anything that fails before returning.
 
 - **Receives:** the intake brief (from agent-builder), or a single-capability request.
 - **Returns:** a short summary (files are on disk) — the agent in one line, the N capabilities by name, the stack in one line, the phase plan in one line, the self-review result, and any `Assumed:` flags for the orchestrator/user to confirm.
-- **Next:** agent-builder fans out the generators per slice — frontend-code-generator for the frontend surface, backend-code-generator for `src/` — concurrently, gated by qa-auditor.
+- **Next:** agent-builder fans out the generators per slice — code-generator for the frontend surface, code-generator for `src/` — concurrently, gated by qa-auditor.
 
 ## Failure modes to avoid
 

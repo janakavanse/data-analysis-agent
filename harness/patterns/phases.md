@@ -85,7 +85,7 @@ After a phase passes its automated gate and is committed, the build publishes a 
 ## Parallel Slices Within a Phase
 
 - spec-writer carves each phase into INDEPENDENT SLICES (the parallel units) with explicit dependencies; default to independence so slices build concurrently.
-- agent-builder fans out a generator per slice — multiple backend-code-generator AND frontend-code-generator invocations in a SINGLE message so they run concurrently (disjoint paths: frontend writes the frontend surface, backend writes `src/` — never the same file). Then fans out qa-auditor per slice concurrently and aggregates verdicts.
+- agent-builder fans out a generator per slice — multiple code-generator AND code-generator invocations in a SINGLE message so they run concurrently (disjoint paths: frontend writes the frontend surface, backend writes `src/` — never the same file). Then fans out qa-auditor per slice concurrently and aggregates verdicts.
 - Serialize ONLY across a true declared dependency. On a BLOCKED slice, loop only that slice's generator; other slices are unaffected. For headless/CLI builds, only backend generators run.
 
 ## Phase Gates
