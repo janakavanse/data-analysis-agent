@@ -37,13 +37,14 @@ Relay only the hard blockers it escalates (e.g. a required key still missing fro
 
 ## Stage 3 — Human testing gate (you own the human channel)
 
-Phase 1 is the smallest working win: real on the one core path, with clearly-labelled non-functional stubs for everything coming later. Handhold the user through testing it:
+Phase 1 is the smallest working win: real on the one core path, with clearly-labelled non-functional stubs for everything coming later. **Spoon-feed the user: the ONLY things they should ever do by hand are (a) put secrets in `.env` and (b) interact with the running app (click / chat). They must never run a terminal command to test.** So *you* bring the app up and keep it up:
 
-1. Load the question tool: `ToolSearch` with query `select:AskUserQuestion` (before asking).
-2. Present the test-handoff as concrete steps: the **exact run commands**, **what to click / what to look at**, the **expected result**, and which parts are **labelled stubs vs real** (so a stub is never mistaken for a bug).
-3. Ask via `AskUserQuestion`: **"Does Phase 1 work as you expected?"** → options **"Yes — continue to Phase 2"** / **"I hit an issue"**.
-4. **On "I hit an issue":** capture what the user saw, then invoke **qa-auditor** to diagnose and CLASSIFY the root cause (SPEC vs CODE, and which surface). Route the fix: SPEC → spec-writer rewrites the spec, then the responsible generator(s) redo the code; CODE → the responsible **code-generator** and/or **code-generator** fixes the surface. Re-gate with qa-auditor, commit + push the fix yourself, then **re-present** the gate. Loop until the user is satisfied.
-5. **On "Yes":** proceed to Stage 4.
+1. **Launch and keep the app serving — don't hand over commands.** Build and start the app yourself in the background (for the skeleton's single-origin model: `cd frontend && pnpm build`, then `uv run alembic upgrade head`, then start the server with `run_in_background: true`), and **leave it running** across the whole gate so the user just opens a link. Verify it's actually up before handing off: `curl` the real page and confirm 200 **and** that it renders STYLED (utilities present in the built CSS / non-barebones), per `harness/patterns/tech-stack.md` and the qa-auditor UI rule. Keep the server process alive until the user has finished testing this phase (restart it silently if it dies); only the user's `.env` secrets and their in-app answers are manual.
+2. Load the question tool: `ToolSearch` with query `select:AskUserQuestion` (before asking).
+3. Hand the user **only a live link and what to look for** — the ready URL (e.g. `http://localhost:8001/app/`), **what to click / type / look at**, the **expected result**, and which parts are **labelled stubs vs real** (so a stub is never mistaken for a bug). No build/run/migrate commands in the handoff — those are already done and running.
+4. Ask via `AskUserQuestion`: **"Does Phase 1 work as you expected?"** → options **"Yes — continue to Phase 2"** / **"I hit an issue"**.
+5. **On "I hit an issue":** capture what the user saw, then invoke **qa-auditor** to diagnose and CLASSIFY the root cause (SPEC vs CODE, and which surface). Route the fix: SPEC → spec-writer rewrites the spec, then the responsible generator(s) redo the code; CODE → the responsible **code-generator** and/or **code-generator** fixes the surface. Re-gate with qa-auditor, commit + push the fix yourself, then rebuild + restart the running app yourself and **re-present** the gate (still just a live link, no commands). Loop until the user is satisfied.
+6. **On "Yes":** proceed to Stage 4.
 
 ## Stage 4 — Per remaining phase (build → gate, repeat)
 
@@ -58,7 +59,7 @@ Repeat until no phases remain.
 
 1. **qa-auditor** — final whole-tree drift audit (CLEAN). Route any divergence per Stage 3 and re-verify.
 2. **agent-builder** — ensure the final state is pushed and the PR body is current.
-3. Summarize for the user: what was built, the verified run commands, what's deferred, and the PR link.
+3. Summarize for the user: what was built, the **live URL it's running at** (keep it serving), what's deferred, and the PR link. Run commands belong in the README for the record — not as something the user must execute to test.
 
 ## Adding a capability to an existing agent
 
