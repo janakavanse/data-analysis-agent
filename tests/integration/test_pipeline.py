@@ -3,12 +3,11 @@ import csv
 import json
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
 
 import data_analysis_agent.db.session as session_module
+from data_analysis_agent.db.database import Database
 from data_analysis_agent.db.models import (
-    Base, DataSourceRow, SessionDataSourceRow, ToolRow, ToolCapabilityRow,
+    DataSourceRow, SessionDataSourceRow, ToolRow, ToolCapabilityRow,
     SessionRow, QueryRecordRow, AgentRunRow,
 )
 
@@ -21,20 +20,16 @@ def _stub_env(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _use_sqlite(tmp_path, monkeypatch):
-    db_path = tmp_path / "test.db"
-    engine = create_engine(f"sqlite:///{db_path}")
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    db = Database(f"sqlite:///{tmp_path / 'test.db'}")
+    db._init_schema()
 
-    monkeypatch.setattr(session_module, "_engine", engine)
-    monkeypatch.setattr(session_module, "_SessionLocal", factory)
+    monkeypatch.setattr(session_module, "_db", db)
     monkeypatch.setattr(session_module, "init_db", lambda: None)
 
     yield
 
-    engine.dispose()
-    monkeypatch.setattr(session_module, "_engine", None)
-    monkeypatch.setattr(session_module, "_SessionLocal", None)
+    db._dispose()
+    monkeypatch.setattr(session_module, "_db", None)
 
 
 @pytest.fixture
@@ -104,7 +99,7 @@ def test_pipeline_runs_end_to_end(session_and_query):
 
     assert final_state.get("error") is None, f"Pipeline error: {final_state.get('error')}"
 
-    with Session(session_module._engine) as s:
+    with session_module.create_db_session() as s:
         qr = s.get(QueryRecordRow, query_record_id)
         assert qr is not None
         assert qr.status == "completed"

@@ -11,6 +11,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # SQLite (default):    sqlite:///data_analysis.db
+    # PostgreSQL:          postgresql+psycopg2://user:pass@host:5432/dbname
+    # PostgreSQL requires: uv pip install data-analysis-agent[postgres]
     database_url: str = Field(default="sqlite:///data_analysis.db")
     openrouter_api_key: str = Field(default="")
     llm_model: str = Field(default="google/gemini-2.5-flash")

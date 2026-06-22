@@ -4,11 +4,9 @@ import io
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 import data_analysis_agent.db.session as session_module
-from data_analysis_agent.db.models import Base
+from data_analysis_agent.db.database import Database
 
 
 @pytest.fixture(autouse=True)
@@ -19,20 +17,16 @@ def _stub_env(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _use_sqlite(tmp_path, monkeypatch):
-    db_path = tmp_path / "golden.db"
-    engine = create_engine(f"sqlite:///{db_path}")
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    db = Database(f"sqlite:///{tmp_path / 'golden.db'}")
+    db._init_schema()
 
-    monkeypatch.setattr(session_module, "_engine", engine)
-    monkeypatch.setattr(session_module, "_SessionLocal", factory)
+    monkeypatch.setattr(session_module, "_db", db)
     monkeypatch.setattr(session_module, "init_db", lambda: None)
 
     yield
 
-    engine.dispose()
-    monkeypatch.setattr(session_module, "_engine", None)
-    monkeypatch.setattr(session_module, "_SessionLocal", None)
+    db._dispose()
+    monkeypatch.setattr(session_module, "_db", None)
 
 
 @pytest.fixture

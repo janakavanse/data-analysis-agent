@@ -1,53 +1,49 @@
 from contextlib import contextmanager
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, Engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
-_engine: Engine | None = None
-_SessionLocal: sessionmaker | None = None
+from data_analysis_agent.db.database import Database
+
+_db: Database | None = None
 
 
-def _get_engine() -> Engine:
-    global _engine
-    if _engine is None:
+def _get_database() -> Database:
+    global _db
+    if _db is None:
         from data_analysis_agent.config.settings import get_settings
-        _engine = create_engine(get_settings().database_url, echo=False)
-    return _engine
+        _db = Database(get_settings().database_url)
+    return _db
 
 
-def _get_session_factory() -> sessionmaker:
-    global _SessionLocal
-    if _SessionLocal is None:
-        _SessionLocal = sessionmaker(
-            bind=_get_engine(), autoflush=False, autocommit=False
-        )
-    return _SessionLocal
+def get_db() -> Database:
+    """Return the singleton Database instance for raw SQL access."""
+    return _get_database()
 
 
 def get_session() -> Generator[Session, None, None]:
-    """FastAPI dependency."""
-    with _get_session_factory()() as session:
+    """FastAPI dependency — yields a SQLAlchemy ORM session."""
+    with _get_database()._make_session() as sess:
         try:
-            yield session
-            session.commit()
+            yield sess
+            sess.commit()
         except Exception:
-            session.rollback()
+            sess.rollback()
             raise
 
 
 @contextmanager
 def create_db_session() -> Generator[Session, None, None]:
-    """Standalone — for graph nodes and scripts."""
-    with _get_session_factory()() as session:
+    """Standalone context manager for graph nodes and scripts."""
+    with _get_database()._make_session() as sess:
         try:
-            yield session
-            session.commit()
+            yield sess
+            sess.commit()
         except Exception:
-            session.rollback()
+            sess.rollback()
             raise
 
 
 def init_db() -> None:
-    from data_analysis_agent.db.models import Base
-    Base.metadata.create_all(bind=_get_engine())
+    """Create all ORM-mapped tables if they do not exist."""
+    _get_database()._init_schema()
