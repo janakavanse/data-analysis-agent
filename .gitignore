@@ -15,3 +15,8 @@ build/
 data/*.db
 data/uploads/*
 !data/uploads/.gitkeep
+
+# DuckDB/SQLite runtime artifacts
+data/*.db-shm
+data/*.db-wal
+data/*.wal
