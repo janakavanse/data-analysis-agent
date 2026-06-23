@@ -1,178 +1,157 @@
 # AI Agent Boilerplate — Spec-Driven, Zero-Shot to Working Agent
 
-This is a boilerplate for building AI agents spec-first. Give it a one-line idea. Walk away with a working, tested, phased agent.
+Give it a one-line idea. Walk away with a working, tested, phased agent.
 
 ---
 
 ## What This Is
 
-A starting point for anyone who wants to build an AI agent without writing boilerplate from scratch. The repo ships with:
+A starting point for building AI agents spec-first. The repo ships with:
 
-- A structured **spec template** covering product vision, architecture, capabilities, data model, API, and UI
-- An **agent-builder** sub-agent that orchestrates the full build lifecycle
-- Sub-agents for spec writing, reviewing, tech design, planning, and auditing
-- Engineering rules baked into the spec so every AI coding session is consistent
-- Phase-gated implementation — minimal working thing first, then iterative expansion
+- A working **baseline agent** in `src/` (FastAPI + LangGraph + SQLite + Anthropic, `transform_text` as the capability slot) — tests pass out of the box
+- A **spec template** in `spec/` covering product vision, architecture, capabilities, data model, API, and UI
+- Three **zero-shot skills** (`/zero-shot-build`, `/zero-shot-fix`, `/zero-shot-sync`)
+- A four-agent **team** — agent-builder orchestrates (plans, fans out, owns git/PR); spec-writer is the single design authority; code-generator implements one slice per instance (parallelised); qa-auditor reviews and gates
+- Engineering rules in `harness/` so every Claude Code session is consistent
+- **Human testing gate between phases** — autonomous within a phase, you test each increment before the next starts
 
 ---
 
 ## How to Use This
 
-### Step 1 — Clone and configure
+### Step 1 — Clone
 
 ```bash
-git clone https://github.com/smallTechOrg/ai-spec-driven-boilerplate.git my-agent
+git clone https://github.com/smallTechOrg/zero-shot-sdd-harness.git my-agent
 cd my-agent
-cp .env.example .env
 ```
 
-### Step 2 — Open in Claude Code (or any AI coding assistant)
+### Step 2 — Open in Claude Code
 
 ```bash
 claude
 ```
 
-### Step 3 — Kick off the agent builder with your idea
+### Step 3 — Build
 
 ```
-/build I want an agent that monitors my Shopify store for low-inventory products and automatically drafts restock emails to suppliers
+/zero-shot-build An agent that monitors my Shopify store for low-inventory products and drafts restock emails to suppliers
 ```
 
-Or just describe your idea naturally — the agent-builder will take it from there.
+One intake round (scope, stack, API keys → fill `.env`), then the agent builds phase by phase and stops at each boundary for you to test.
 
 ---
 
-## What Happens Next (Fully Automated)
-
-The **agent-builder** orchestrates this sequence:
+## What Happens (Intake → Phase by Phase)
 
 ```
 Your idea
     ↓
-[spec-writer]     → Asks clarifying questions → Drafts product spec
+INTAKE — scope, stack, LLM provider, constraints; fill .env with the required API key
     ↓
-[spec-reviewer]   → Checks coherence, flags gaps → Requests revisions
+[spec-writer]  → Full spec: architecture + agent-graph + phased plan (self-reviewed)
     ↓
-[spec-writer]     → Iterates until spec is complete
+[agent-builder] → Feature branch + PR, scaffold
     ↓
-[tech-designer]   → Proposes tech stack, architecture, data model
+per phase — all slices concurrently:
+    [code-generator: slice-a]  ──→  [qa-auditor: slice-a]  ─┐
+    [code-generator: slice-b]  ──→  [qa-auditor: slice-b]  ─┤→  commit + push
+    [code-generator: slice-c]  ──→  [qa-auditor: slice-c]  ─┘
     ↓
-You approve the spec & tech design
+HUMAN TESTING GATE — exact run commands + expected result; you confirm before next phase
     ↓
-[planner]         → Breaks work into phases (minimal → complete)
+(issue → qa-auditor classifies SPEC-vs-CODE → code-generator fixes → re-gate)
     ↓
-[plan-reviewer]   → Validates plan against spec
-    ↓
-Phase 1: Build the minimal working agent (core loop, no polish)
-    ↓
-[qa-auditor]      → Tests phase 1
-    ↓
-Phase 2, 3, ... : Iterate and expand
-    ↓
-[drift-auditor]   → Ensures code matches spec throughout
-    ↓
-Hand-off to you
+repeat per phase → SHIP
 ```
 
-**Nothing is skipped.** If a phase fails QA, it stays in that phase until it passes.
-
----
-
-## Development Phases (Default Model)
-
-| Phase | What Gets Built |
-|-------|-----------------|
-| 1 | Domain models + data layer |
-| 2 | Core agent loop (no integrations, stubbed tools) |
-| 3 | First real integration (the "happy path" end-to-end) |
-| 4 | Error handling, retries, resilience |
-| 5 | Remaining integrations |
-| 6 | API / CLI surface |
-| 7 | Basic UI (if needed) |
-| 8 | Integration tests |
-| 9 | Observability + logging |
-| 10 | Polish, documentation, hand-off |
-
-Each phase ends with a commit and passes QA before the next phase begins.
+Phase 1 is the smallest first-time-right win — real on the tested path, with labelled stubs for everything coming later. Each later phase wires one more stub into real functionality.
 
 ---
 
 ## Repo Layout
 
 ```
+src/agent/          ← baseline agent (FastAPI + LangGraph + SQLite + Anthropic)
+  api/              ← FastAPI routers (create_app, health, runs)
+  config/           ← Pydantic BaseSettings
+  db/               ← SQLAlchemy models + session
+  domain/           ← Pydantic request/response models
+  graph/            ← LangGraph nodes, edges, state, runner  ← CAPABILITY SLOT
+  llm/              ← LLM client wrapper
+  prompts/          ← prompt templates (.md)
+  observability/
+frontend/           ← Next.js static export (served by FastAPI at /app)
+tests/
+  unit/             ← passes with no API key
+  integration/      ← requires real key in .env
+spec/               ← your product spec (fill this in or let /zero-shot-build fill it)
+harness/            ← engineering rules and patterns
 .claude/
-  agents/           ← Sub-agents (agent-builder, spec-writer, etc.)
-  commands/         ← Slash commands (/build, /spec-check, /plan)
-.github/
-  copilot-instructions.md  ← Global Copilot instructions (mandatory spec reads)
-  agents/           ← Copilot agent mode definitions (drift-auditor, planner, etc.)
-  prompts/          ← Slash-style Copilot prompts (/plan, /challenge, /spec-check)
-  instructions/     ← Scoped auto-applied rules (code-style, secret-hygiene, etc.)
-spec/
-  product/          ← What your agent does (fill this in or let spec-writer do it)
-  engineering/      ← How AI agents should write code for this project (immutable rules)
-    workflows/      ← Step-by-step procedures for each agent/workflow type
-reports/
-  sessions/         ← Auto-generated session logs from every AI coding session
-CLAUDE.md           ← Entry point for Claude Code
-AGENTS.md           ← Entry point for OpenAI Codex / GitHub Copilot
-.env.example        ← Environment variable template
+  skills/           ← /zero-shot-build, /zero-shot-fix, /zero-shot-sync
+  agents/           ← agent-builder, spec-writer, code-generator, qa-auditor
+CLAUDE.md
+pyproject.toml
+alembic.ini
+agent.py              ← run server (--check-setup to verify)
+.env.example
+```
+
+**Capability slot** — the three files to replace for your agent:
+- `src/agent/graph/nodes.py` — replace `transform_text` with your logic
+- `src/agent/prompts/transform.md` — replace with your system prompt
+- `frontend/src/app/page.tsx` — replace the transform form with your UI
+
+Everything else (graph wiring, API, DB, settings, tests) is already working.
+
+---
+
+## Running the Baseline
+
+```bash
+cp .env.example .env
+# edit .env: set AGENT_ANTHROPIC_API_KEY=<your key>
+uv sync
+python agent.py                        # migrations + frontend build + start server
+python agent.py --check-setup          # verify tools, .env, deps, tests
+```
+
+Once running:
+
+| URL | What |
+|-----|------|
+| `http://localhost:8001/app/` | **UI** — transform form (the capability slot) |
+| `http://localhost:8001/health` | API health check |
+| `http://localhost:8001/docs` | Interactive API docs (Swagger) |
+
+Tests:
+
+```bash
+uv run pytest tests/unit/ -v          # no key needed
+uv run pytest tests/ -v               # requires real key in .env
 ```
 
 ---
 
-## Manually Editing the Spec
+## Rules AI Agents Follow
 
-If you prefer to write the spec yourself before involving AI:
-
-1. Open `spec/product/01-vision.md` and fill in the placeholders
-2. Work through each file in `spec/product/` in order
-3. Once the spec is complete, run `/plan` to jump straight to the planning phase
-
----
-
-## Rules That AI Agents Follow
-
-Every AI session in this repo follows the rules in `spec/engineering/ai-agents.md`:
+Full rules in `harness/rules/ai-agents.md`. Summary:
 
 - Read the full spec before writing any code
-- Open a session report at `reports/sessions/`
-- Commit every logical unit of work (never accumulate uncommitted changes)
-- One phase at a time — no skipping
-- Write tests before marking a phase complete
-- Update this README whenever the project layout changes
+- Never skip a phase; commit every logical unit
+- Tests run against the real LLM/API using keys from `.env` — stubbed runs do not count as passing
+- Each phase is tested by the human before the next phase starts
+- The build record is git history + the PR + the per-phase test-handoffs
 
 ---
 
 ## FAQ
 
-**Can I use this without Claude Code?**
-Yes. `AGENTS.md` has the same entry point for OpenAI Codex and GitHub Copilot. The sub-agents are plain markdown files.
-
-**What if my agent needs a database?**
-The spec template includes a data model section. The tech-designer sub-agent will recommend the right database for your use case.
-
-**What if I already have a tech stack in mind?**
-Tell the agent-builder upfront: `/build [idea] — use Python + FastAPI + PostgreSQL`. It will skip the tech design Q&A for those decisions.
+**What if I already have a stack in mind?**
+State it in the idea: `/zero-shot-build [idea] — use Python + FastAPI + PostgreSQL`. Stack choices are binding.
 
 **What if something breaks?**
-Each phase is resilient by design. The QA auditor will catch failures before the next phase starts. You can always re-run a phase.
+Run `/zero-shot-fix [what's broken]` — qa-auditor classifies the problem (SPEC vs CODE), the right generator fixes it, qa-auditor re-gates.
 
----
-
-## Test-Branch Workflow
-
-The recommended way to iterate on this boilerplate:
-
-1. Keep `main` as the clean boilerplate — only spec, engineering rules, and agent config.
-2. For each build attempt, create a numbered test branch: `test-1`, `test-2`, etc.
-3. Give the agent-builder a single-line prompt on the test branch. Let it build.
-4. Review and test the result on that branch.
-5. **Never merge the generated application code back to main.** Test branches are disposable.
-6. If a run surfaces a boilerplate improvement (a clearer spec template, a missing rule), cherry-pick or manually apply that fix to `main`.
-
----
-
-## Contributing
-
-This is a boilerplate, not a framework. Improvements to the spec templates, engineering rules, agent definitions, or workflow specs belong on `main`. Generated application code does not.
+**What if spec and code drift?**
+Run `/zero-shot-sync` — qa-auditor classifies each divergence, generators fix, spec wins.
