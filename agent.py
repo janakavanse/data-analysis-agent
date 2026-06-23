@@ -3,8 +3,8 @@
 agent.py — run the agent or check local setup
 
 Usage:
-  python agent.py               # build frontend + apply migrations + start server
-  python agent.py --check-setup # verify all tools, .env, deps, and tests
+  python agent.py        # verify all tools, .env, deps, and tests (default)
+  python agent.py --run  # build frontend + apply migrations + start server
 """
 import argparse
 import os
@@ -195,29 +195,29 @@ def do_run() -> None:
 
 # ── main ──────────────────────────────────────────────────────────────────────
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the agent or check local setup")
-    parser.add_argument("--check-setup", action="store_true", help="verify tools, .env, deps, and tests")
+    parser = argparse.ArgumentParser(description="Check local setup (default) or run the agent")
+    parser.add_argument("--run", action="store_true", help="build frontend + apply migrations + start server")
     args = parser.parse_args()
 
-    if args.check_setup:
-        print(f"\n{BOLD}=== Setup Check ==={RESET}")
-        check_tools()
-        check_env()
-        check_python_env()
-        check_db()
-        check_tests()
-        check_frontend()
-        print()
-        if _failures:
-            print(f"{RED}{BOLD}{len(_failures)} issue(s) found — fix before running.{RESET}")
-            for f in _failures:
-                print(f"  {RED}✗{RESET}  {f}")
-            sys.exit(1)
-        else:
-            print(f"{GREEN}{BOLD}All checks passed. Run: python agent.py{RESET}\n")
+    if args.run:
+        do_run()
         return
 
-    do_run()
+    print(f"\n{BOLD}=== Setup Check ==={RESET}")
+    check_tools()
+    check_env()
+    check_python_env()
+    check_db()
+    check_tests()
+    check_frontend()
+    print()
+    if _failures:
+        print(f"{RED}{BOLD}{len(_failures)} issue(s) found — fix before running.{RESET}")
+        for f in _failures:
+            print(f"  {RED}✗{RESET}  {f}")
+        sys.exit(1)
+    else:
+        print(f"{GREEN}{BOLD}All checks passed. Run: python agent.py --run{RESET}\n")
 
 
 if __name__ == "__main__":

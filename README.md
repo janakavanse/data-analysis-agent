@@ -95,7 +95,7 @@ harness/
 CLAUDE.md
 pyproject.toml
 alembic.ini        ← Alembic migrations (alembic/)
-agent.py            ← run server (--check-setup to verify)
+agent.py            ← verify setup (default); --run to start the server
 .env.example
 ```
 
@@ -116,8 +116,8 @@ cp .env.example .env
 #   AGENT_ANTHROPIC_API_KEY=<your key>   or   AGENT_GEMINI_API_KEY=<your key>
 # the provider is auto-detected from whichever key is set
 uv sync
-python agent.py                        # migrations + frontend build + start server
-python agent.py --check-setup          # verify tools, .env, deps, tests
+python agent.py                        # verify tools, .env, deps, tests (default)
+python agent.py --run                  # migrations + frontend build + start server
 ```
 
 Once running:
