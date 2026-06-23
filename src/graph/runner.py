@@ -53,11 +53,13 @@ def _load_history(session_id: str) -> list[dict]:
             .order_by(QaTurnRow.created_at.desc())
             .limit(_HISTORY_LIMIT)
         ).all()
-    # Oldest first for natural reading order.
-    return [
-        {"question": r.question, "sql_text": r.sql_text, "answer_text": r.answer_text}
-        for r in reversed(rows)
-    ]
+        # Extract scalars into plain dicts while the session is still open;
+        # never return live ORM instances (they detach after the block).
+        # Oldest first for natural reading order.
+        return [
+            {"question": r.question, "sql_text": r.sql_text, "answer_text": r.answer_text}
+            for r in reversed(rows)
+        ]
 
 
 def run_analyst(session_id: str, question: str) -> dict:
