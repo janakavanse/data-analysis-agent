@@ -52,6 +52,8 @@ def test_upload_csv(client):
     assert data["table_name"].startswith(SESSION_PREFIX)
     assert "column_names" in data
     assert "region" in data["column_names"]
+    assert "id" in data, "Response must use 'id', not 'dataset_id'"
+    assert data["id"]
 
 
 def test_upload_no_session_header(client):
@@ -105,6 +107,16 @@ def test_list_datasets_after_upload(client):
     items = r.json()["data"]
     assert len(items) == 1
     assert items[0]["original_filename"] == "data.csv"
+    assert "id" in items[0], "List item must use 'id', not 'dataset_id'"
+    assert items[0]["id"]
+
+
+def test_list_datasets_upserts_session(client):
+    """GET /datasets for a brand-new session must create the session row (upsert) and return 200."""
+    new_session = "brand-new-33333333-3333-3333-3333-333333333333"
+    r = client.get("/datasets", headers={"X-Session-ID": new_session})
+    assert r.status_code == 200
+    assert r.json()["data"] == []
 
 
 # ---------------------------------------------------------------------------

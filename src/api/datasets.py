@@ -54,7 +54,7 @@ async def upload_dataset(
     columns = json.loads(dataset_data["column_names"])
 
     return ok({
-        "dataset_id": dataset_data["id"],
+        "id": dataset_data["id"],
         "session_id": dataset_data["session_id"],
         "table_name": dataset_data["table_name"],
         "original_filename": dataset_data["original_filename"],
@@ -72,6 +72,8 @@ def list_datasets(
     if not x_session_id:
         raise api_error("MISSING_SESSION", "X-Session-ID header is required", 400)
 
+    upsert_session(x_session_id, session)
+
     rows = session.scalars(
         select(DatasetRow).where(DatasetRow.session_id == x_session_id)
     ).all()
@@ -83,7 +85,7 @@ def list_datasets(
         except Exception:
             columns = []
         result.append({
-            "dataset_id": ds.id,
+            "id": ds.id,
             "session_id": ds.session_id,
             "table_name": ds.table_name,
             "original_filename": ds.original_filename,

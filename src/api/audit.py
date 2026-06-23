@@ -5,6 +5,7 @@ from sqlalchemy import select
 from api._common import ok, api_error
 from db.session import get_session
 from db.models import AuditLogRow
+from api.datasets import upsert_session
 
 router = APIRouter()
 
@@ -16,6 +17,8 @@ def list_audit(
 ) -> dict:
     if not x_session_id:
         raise api_error("MISSING_SESSION", "X-Session-ID header is required", 400)
+
+    upsert_session(x_session_id, session)
 
     rows = session.scalars(
         select(AuditLogRow)

@@ -156,17 +156,49 @@ def sql_executor(state: AnalystState) -> AnalystState:
 # response_formatter
 # ---------------------------------------------------------------------------
 
+_MAX_TABLE_ROWS = 20
+_MAX_CELL_LEN = 50
+
+
+def _cell(value: object) -> str:
+    """Format a single cell value for a markdown table."""
+    if value is None:
+        return "—"  # em dash
+    text = str(value)
+    if len(text) > _MAX_CELL_LEN:
+        text = text[:_MAX_CELL_LEN] + "…"
+    return text
+
+
+def _markdown_table(rows: list[dict]) -> str:
+    """Render up to _MAX_TABLE_ROWS rows as a markdown table."""
+    display_rows = rows[:_MAX_TABLE_ROWS]
+    if not display_rows:
+        return ""
+    headers = list(display_rows[0].keys())
+    header_row = "| " + " | ".join(headers) + " |"
+    separator = "| " + " | ".join("---" for _ in headers) + " |"
+    data_rows = [
+        "| " + " | ".join(_cell(row.get(h)) for h in headers) + " |"
+        for row in display_rows
+    ]
+    return "\n".join([header_row, separator] + data_rows)
+
+
 def _format_answer(
     sql_explanation: str,
     rows: list[dict],
     row_count: int,
 ) -> str:
-    """Build a plain-text explanation — the frontend renders the table separately."""
+    """Build a markdown answer with prose explanation and an embedded table."""
     parts: list[str] = [sql_explanation]
 
     if not rows:
         parts.append("No results found for that query.")
     else:
+        table_md = _markdown_table(rows)
+        if table_md:
+            parts.append(table_md)
         shown = len(rows)
         if row_count > shown:
             parts.append(f"Showing {shown} of {row_count} rows.")

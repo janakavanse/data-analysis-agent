@@ -35,7 +35,7 @@ def test_upload_response_shape(client):
     body = r.json()
     assert body["error"] is None
     data = body["data"]
-    for key in ("dataset_id", "session_id", "table_name", "original_filename", "row_count", "column_names"):
+    for key in ("id", "session_id", "table_name", "original_filename", "row_count", "column_names"):
         assert key in data, f"Missing key: {key}"
 
 
