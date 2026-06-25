@@ -6,6 +6,10 @@
 
 A data source's tools are **not** stored as rows. They are exposed at runtime by the source's MCP server and discovered via the MCP client (`list_tools`). The only tool-related data persisted is the LLM-generated **descriptions**, kept on the `DataSource` so the server's tool description survives without re-calling the LLM on every run.
 
+### Agent memory store (separate, not Alembic-managed)
+
+Durable per-session memory is stored by LangGraph's `SqliteSaver` in its **own SQLite file** (path from `DATAANALYSIS_CHECKPOINT_DB`), keyed by `thread_id = session_id`. Its tables are created and owned by `langgraph-checkpoint-sqlite` — they are **not** part of the SQLAlchemy models or Alembic migrations, and should not be mixed into the metadata DB. Deleting a session closes its MCP pool; the checkpoint rows for that thread may be left orphaned or cleaned best-effort.
+
 ## Entities
 
 ### Entity: DataSource
@@ -113,7 +117,7 @@ When a file is uploaded, a single `DataSource` is created atomically:
 ## Data Lifecycle
 
 - **DataSource**: created on upload; deleted via explicit user action (cascades to SessionDataSource links, QueryRecord/AgentRun via the session, and the Parquet file on disk).
-- **MCP server/session**: ephemeral — built in `load_data` and closed in `finalize`/`handle_error`. Never persisted.
+- **MCP pool**: per session — built lazily on the first query (`SessionPoolManager`), reused across queries, idle/LRU-evicted, and closed on session delete + app shutdown. Never persisted (rebuilt from `parquet_path` on demand); its `ClientSession`s are transient per node.
 - **Session**: created when the user starts a session; links removed when a source is deleted.
 - **QueryRecord**: created when the user submits a question; answer written after the pipeline completes; deleted with the Session.
 - **AgentRun**: created at pipeline start; updated to `completed` or `failed` at end; deleted with the QueryRecord.

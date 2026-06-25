@@ -6,22 +6,26 @@ The agent answers a user's natural language question by acting as an **MCP clien
 
 This is a **ReAct loop**: the LLM reasons, selects an MCP tool to call, observes the result, and repeats until it emits `FINAL ANSWER:`. Tools are not hardcoded — they are discovered at runtime via `list_tools()`, making the loop reusable across any data-source type that ships an MCP server.
 
+The session's MCP pool (one server per source) is built **once on the session's first query** and reused by every later query (see `07-agent-graph.md` and capability 3). The agent also has **durable per-session memory** (LangGraph `SqliteSaver`, `thread_id = session_id`): prior Q&A turns are fed into each new query's prompt so follow-up questions work.
+
 ## User-Facing Behaviour
 
 1. User types a natural language question in a session.
-2. The agent opens one in-memory MCP server+session per attached data source and lists their tools.
-3. The agent runs one or more MCP tool calls (each a read-only DuckDB `SELECT` over a Parquet file).
+2. The app acquires the session's MCP pool (building it on first use, reusing it after) and runs the ReAct loop.
+3. The agent runs one or more MCP tool calls (each a read-only DuckDB `SELECT` over a Parquet file), with the prior conversation available as context.
 4. When the LLM determines it has enough information, it returns a plain-text final answer.
 5. The session page shows the answer inline with: iteration count, token usage, cost estimate, and a collapsible tool-call trace.
 
 ## Agent Loop (ReAct)
 
+The per-query loop is just plan → execute → finalize; the pool is acquired **before** the graph runs.
+
 ```
-load_data (load DataSource rows + open one MCP server+session per source; list_tools)
+SessionPoolManager.acquire(session_id)   ← lazy build (first query) / reuse; outside the graph
     │
     ▼
-plan_action ◄─────────────────────────────────────────┐
-    │                                                  │
+plan_action ◄─────────────────────────────────────────┐   (reads tools/schema from the manager
+    │                                                  │    + the durable `conversation` memory)
     ├── (FINAL ANSWER:) → finalize → END               │
     │                                                  │
     └── (tool call JSON) → execute_action ─────────────┘
@@ -71,6 +75,9 @@ FINAL ANSWER: <the complete answer in plain text>
 ```
 You are a data-analysis agent operating in a ReAct loop.
 
+Conversation so far (prior questions and answers in this session):
+[1] Q: What were total sales? → A: 60.
+
 Available tools (call a tool by its exact name):
 
 Tool: ds_2024_sales__run_query  (queries table: ds_2024_sales)
@@ -98,14 +105,14 @@ Decide your next step. Respond with EXACTLY ONE of:
 
 ## State Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `tools` | `list[dict]` | From `list_tools()`: `[{"name", "table_name", "description", "parameter_schema"}]` (flat) |
-| `action_history` | `list[dict]` | Each entry: `{"tool": str, "arguments": dict, "result": str, "is_error": bool}` |
-| `iteration_count` | `int` | Number of tool calls executed so far |
-| `llm_response` | `str` | Raw LLM output from last `plan_action` call |
+| Field | Type | Scope | Description |
+|-------|------|-------|-------------|
+| `conversation` | `list[dict]` | durable (memory) | Prior turns `{"question","answer"}`; reducer-appended, restored by the checkpointer |
+| `action_history` | `list[dict]` | per-query scratch | `{"tool","arguments","result","is_error"}` |
+| `iteration_count` | `int` | per-query scratch | Tool calls executed this query |
+| `llm_response` | `str` | per-query scratch | Raw LLM output from last `plan_action` |
 
-(The MCP `ClientSession`s themselves live in the per-`run_id` pool, not in state.)
+Tools/schema are read from the `SessionPoolManager` (by `session_id`), not stored in state. The MCP servers + DuckDB connections live in that manager. Per-query scratch is reset via the `ainvoke` input each query; `conversation` accumulates across queries via its reducer + the `SqliteSaver` checkpointer.
 
 ## Persistence
 

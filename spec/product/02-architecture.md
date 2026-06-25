@@ -2,89 +2,94 @@
 
 ## System Overview
 
-The data analysis agent is a single-process FastAPI application. Users interact via a browser UI (Jinja2 templates). Uploaded files are converted to **Parquet** on disk; data-source metadata, sessions, and query history live in **SQLite**. Each natural language query runs a LangGraph ReAct pipeline that acts as a **Model Context Protocol (MCP) client**: for every data source attached to the session it opens an in-process MCP **server** that wraps that source's Parquet file, discovers the server's tools (`list_tools`), and invokes them (`call_tool`) iteratively until the LLM signals a final answer.
+The data analysis agent is a single-process FastAPI application. Users interact via a browser UI (Jinja2 templates). Uploaded files are converted to **Parquet** on disk; data-source metadata, sessions, and query history live in **SQLite**.
 
-The key architectural decision is that **a data source's capabilities are exposed through an MCP server, not hardcoded in the agent**. Uploading a CSV conceptually "creates an MCP server" that converts a tool invocation into a DuckDB query over the Parquet. Adding a new data-source type means writing a new MCP server — the agent loop, the client, and the UI shell are untouched. MCP is used **only** as the agent↔tool transport; the LLM↔agent ReAct protocol (the LLM emitting JSON tool calls) stays hand-rolled.
+A **session** is the long-lived agent context. The first time a session is queried, the app builds a **per-session MCP pool** — one in-process Model Context Protocol (MCP) **server** per attached data source, each wrapping that source's Parquet via DuckDB. That pool is **reused by every subsequent query** in the session (not rebuilt per query). Each query is one LangGraph ReAct run acting as an MCP **client**: `plan_action → execute_action (call_tool) → finalize`, looping until the LLM signals a final answer. The agent's **memory is durable per session** via a LangGraph `SqliteSaver` checkpointer keyed by `thread_id = session_id`.
+
+Key decisions: **(1)** a data source's capabilities are exposed through an MCP server, not hardcoded — adding a data-source type means writing a new MCP server; **(2)** MCP is only the agent↔tool transport (the LLM↔agent ReAct protocol stays hand-rolled); **(3)** all MCP/tool code lives under `tools/`.
 
 ## Component Map
 
 ```
 Browser (HTML form)
-    ↓ POST /datasources/upload
+    ↓ POST /datasources/upload  |  POST /sessions  |  POST /sessions/{id}/query
 FastAPI (uvicorn, sync endpoints)
-    │  upload: CSV → Parquet (FileIngester) + DataSource row (+ LLM descriptions)
-    │  query : create QueryRecord + AgentRun, spawn a daemon thread
+    │  upload : CSV → Parquet (FileIngester) + DataSource row (+ LLM descriptions)
+    │  session: create SessionRow + links; best-effort warm the session pool
+    │  query  : create QueryRecord + AgentRun, spawn a daemon thread
     │
-    └─► Pipeline thread → asyncio.run(agent_graph.ainvoke(...))
-            ├── load_data      (open one in-memory MCP server+session per source; list_tools)
-            ├── plan_action    (LLM picks next tool + arguments, or FINAL ANSWER)
+    └─► Pipeline thread → SessionPoolManager.acquire(session_id)   (lazy build, reused)
+                        → per-session lock → asyncio.run:
+                            AsyncSqliteSaver(checkpoint_db) → build_graph().compile(checkpointer)
+                            → ainvoke(input, thread_id=session_id)
+            ├── plan_action    (reads tools/schema/memory; LLM picks next tool, or FINAL ANSWER)
             ├── execute_action (MCP client call_tool → DuckDB SELECT over Parquet)
-            └── finalize       (persist QueryRecord; close MCP sessions)
+            └── finalize       (persist QueryRecord; append turn to durable `conversation`)
                 ↓
-            SQLite (metadata, via SQLAlchemy 2.0)   +   Parquet files (queried by DuckDB)
+        SQLite (metadata) + checkpoint SQLite (memory) + Parquet files (DuckDB)
 ```
 
 ## MCP Layer
 
 ```
-                 graph/mcp_pool.py  (the ONLY importer of mcp.shared.memory)
-                 ┌──────────────────────────────────────────────────────┐
- agent (client)  │  per run_id (held): N FastMCP servers + DuckDB conns  │
-                 │  per call (transient): ClientSession over in-memory   │
-                 │           transport ──►  FastMCP(ds_i) ─► DuckDB ─► Parquet_i
-                 └──────────────────────────────────────────────────────┘
-                         build_server() lives in graph/mcp/csv_server.py
+        tools/mcp/pool.py — SessionPoolManager (the ONLY importer of mcp.shared.memory)
+        ┌────────────────────────────────────────────────────────────────┐
+ agent  │  per session_id (held, reused across queries; LRU/idle evicted):│
+        │     N FastMCP servers + DuckDB conns  + a per-session lock       │
+        │  per call (transient): ClientSession ──► FastMCP(ds_i) ─► DuckDB ─► Parquet_i
+        └────────────────────────────────────────────────────────────────┘
+                         build_server() lives in tools/mcp/server.py
 ```
 
-- **Transport:** in-process / in-memory. No subprocess, no ports — `create_connected_server_and_client_session(FastMCP)` yields an already-`initialize()`d `ClientSession`. Sessions are **transient** (opened/closed within a single graph node — see Concurrency below); only the servers + their DuckDB connections persist for the run.
-- **One server per data source.** Each server exposes a single `run_query` tool. The pool surfaces tools to the agent under **namespaced keys** (`<table_name>__run_query`) so N connected servers never collide, and routes each `call_tool` back to the owning session.
-- **Isolation seam:** every MCP import lives in `mcp_pool.py` / `mcp/csv_server.py`. The rest of the code never imports `mcp`. The `mcp` SDK is pinned `==1.28.0` (v2 removes the in-memory helper).
+- **Transport:** in-process / in-memory (`create_connected_server_and_client_session`). Sessions are **transient** (opened/closed within a single graph node); the servers + DuckDB connections persist for the **session** and are reused by every query.
+- **One server per data source**, tool key `<table_name>__run_query`; the manager namespaces + routes `call_tool` to the owning server.
+- **Lifecycle:** lazy build on first query; reused; **idle/LRU eviction**; closed on session delete + app shutdown; invalidated when a session's sources change. Queries on one session are **serialized** by a per-session lock (the DuckDB connection is not concurrency-safe).
+- **Isolation seam:** every MCP import lives in `tools/mcp/`. The `mcp` SDK is pinned `==1.28.0`.
 
 ## Layers
 
 | Layer | Responsibility |
 |-------|----------------|
-| API (FastAPI) | HTTP routing, file upload, form handling, template rendering |
+| API (FastAPI) | HTTP routing, upload, forms, templates; warms/closes session pools on create/delete |
 | Ingestion | CSV/XLSX/JSON → Parquet; schema + row-count extraction (`tools/ingester.py`) |
-| MCP server | Per-source `FastMCP` wrapping one Parquet; `run_query` tool runs read-only DuckDB SQL (`graph/mcp/csv_server.py`) |
-| MCP client pool | Open/list/call/close sessions per run; namespacing + routing (`graph/mcp_pool.py`) |
-| Graph (LangGraph) | Async ReAct pipeline: load → plan → execute → loop → finalize |
+| MCP server | Per-source `FastMCP` over one Parquet; `run_query` via read-only DuckDB (`tools/mcp/server.py`) |
+| Session pool manager | Build/cache/evict per-session pools; namespacing, routing, per-session lock (`tools/mcp/pool.py`) |
+| Graph (LangGraph) | Async ReAct pipeline: plan → execute → loop → finalize (no `load_data`) |
+| Memory | Durable per-session checkpointer (`SqliteSaver`, `thread_id = session_id`) |
 | LLM (OpenRouter) | Chat completions; falls back to stub when key not set |
-| Domain | Pydantic/SQLAlchemy models for all entities |
 | DB (SQLAlchemy + SQLite) | Persistence of metadata, sessions, query history |
-| Templates (Jinja2) | Server-rendered HTML: data sources, sessions, query history |
+| Templates (Jinja2) | Server-rendered HTML |
 
 ## Data Flow
 
-1. **Upload:** User uploads a file → FastAPI streams it to Parquet (`FileIngester`), creates a `DataSource` record (parquet_path, schema, row_count), and stores an **LLM-generated `tool_description` and `capability_description`** on the row (so the server's tool description survives without re-calling the LLM each run).
-2. **New session:** User starts a session on one or more DataSources → FastAPI creates a `Session` and `SessionDataSource` links → redirects to the session page.
-3. **Query:** User asks a question → FastAPI creates a `QueryRecord` + `AgentRun` and spawns a daemon thread that calls `run_pipeline()`.
-4. **Agent loop** (async, one `asyncio.run` per run on the pipeline thread):
-   - `load_data`: loads the session's sources from SQLite; for each, builds a `FastMCP` server over its Parquet and opens an in-memory `ClientSession` (held in a per-`run_id` pool); aggregates `list_tools()` into `state["tools"]`.
-   - `plan_action`: sends tools + schema + question + history to the LLM → receives a JSON tool call (`{"tool","arguments"}`) or `FINAL ANSWER:`.
-   - `execute_action`: routes the call through the pool → `call_tool` → the server's DuckDB `SELECT` over the Parquet; appends the result (or recoverable error) to history.
-   - loop back to `plan_action` until `FINAL ANSWER:` or max iterations.
-   - `finalize`: persists answer, token counts, tool trace; **closes all MCP sessions** for the run.
-5. **Result:** FastAPI redirects to the session page; the new answer is highlighted inline.
+1. **Upload:** file → Parquet (`FileIngester`); a `DataSource` row stores parquet_path, schema, row_count, and LLM-generated `tool_description`/`capability_description`.
+2. **New session:** create `Session` + `SessionDataSource` links; **best-effort warm** the session pool (`SessionPoolManager.acquire`).
+3. **Query:** create `QueryRecord` + `AgentRun`; spawn a daemon thread → `run_pipeline()`.
+4. **Per-query run:** acquire the session pool (lazy-build if evicted/restarted) and the per-session lock; inside one `asyncio.run`, open the checkpointer and `ainvoke` the graph with `thread_id = session_id`:
+   - `plan_action`: read tools/schema from the manager + the durable `conversation`; ask the LLM for a `{"tool","arguments"}` call or `FINAL ANSWER:`.
+   - `execute_action`: `manager.call_tool` → DuckDB `SELECT`; append result/error to the per-query `action_history`.
+   - loop until `FINAL ANSWER:` or max iterations; `finalize` persists the record and appends `{question, answer}` to `conversation` (memory). **The pool is not closed here.**
+5. **Result:** redirect to the session page (polls `/status`); the new answer renders inline.
 
 ## External Dependencies
 
 | Dependency | Purpose | Failure Mode |
 |------------|---------|--------------|
-| OpenRouter (Gemini 2.5 Flash) | NL reasoning and action planning | Falls back to stub — answer marked as "(stub mode)" |
-| `mcp` SDK (in-process) | Agent↔tool protocol | Server build / session open failure → fatal for that run (clean error) |
-| DuckDB | Read-only SQL over Parquet | SQL errors are recoverable (fed back to the LLM); a missing Parquet is fatal |
-| SQLite | Store metadata | App fails to start if DB file is unwritable |
-| Local filesystem | Store Parquet files | Upload fails with a user-visible error |
+| OpenRouter (Gemini 2.5 Flash) | NL reasoning / planning | Falls back to stub — "(stub mode)" |
+| `mcp` SDK (in-process) | Agent↔tool protocol | Server build / session failure → fatal for that run |
+| DuckDB | Read-only SQL over Parquet | SQL errors recoverable; missing Parquet fatal |
+| `langgraph-checkpoint-sqlite` | Durable per-session memory | Checkpoint DB unwritable → memory disabled / run error (degrade clearly) |
+| SQLite | Metadata + checkpoint stores | App fails to start if unwritable |
+| Local filesystem | Parquet files | Upload fails with a user-visible error |
 
-## Concurrency & Async Model
+## Concurrency, Async & Memory Model
 
-- FastAPI endpoints stay **sync**; a query runs on a **daemon thread** (`threading.Thread`).
-- `run_pipeline()` is sync and owns the event loop: `asyncio.run(agent_graph.ainvoke(...))`.
-- LangGraph runs **each node in its own asyncio task**. Because AnyIO binds an async context manager to its entering task, MCP `ClientSession`s are **transient** — opened and closed within a single node. The per-`run_id` pool holds only plain, task-safe objects across nodes (the built `FastMCP` servers and their DuckDB connections); these are closed in `finalize`/`handle_error`, with a `try/finally` backstop in `run_pipeline`.
-- **Constraint (non-negotiable):** do not add LangGraph parallel fan-out nodes, and never hold an MCP `ClientSession` open across nodes — that triggers AnyIO's "exit cancel scope in a different task" error.
-- The sync SQLAlchemy and sync LLM `complete()` calls are invoked directly inside the async nodes; the dedicated thread makes blocking harmless.
+- FastAPI endpoints stay **sync**; a query runs on a **daemon thread**; `run_pipeline()` owns one `asyncio.run` per query.
+- LangGraph runs **each node in its own task** → MCP `ClientSession`s are **transient per node**; the manager holds only plain objects (servers + DuckDB conns) across nodes and across queries.
+- **Per-session serialization:** a per-session `threading.Lock` wraps each query (shared DuckDB conn). Eviction skips locked (in-use) sessions.
+- **Memory:** `AsyncSqliteSaver` (file-backed) keyed by `thread_id = session_id`; a fresh saver is opened inside each query's loop (durable across these ephemeral savers and across restarts). Only `conversation` is kept in durable state; per-query scratch is reset via the `ainvoke` input.
+- **Constraints (non-negotiable):** no LangGraph parallel fan-out; never span an MCP `ClientSession` across nodes; never wrap MCP calls in `anyio.to_thread`.
 
 ## Deployment Model
 
-Local single-user service. Runs with `uv run python -m data_analysis_agent` on port 8001. Single process — the MCP servers are in-memory, so there is nothing extra to deploy. No container required for v0.1.
+Local single-user service: `uv run python -m data_analysis_agent` on port 8001. Single process — MCP servers are in-memory; the metadata DB, the checkpoint DB, and Parquet files are the only on-disk state.

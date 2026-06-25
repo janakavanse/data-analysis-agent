@@ -18,7 +18,11 @@
 
 **Why:** The agent's tools are formalized as MCP. Each data source is wrapped by an in-process `FastMCP` server; the agent is an MCP **client** that discovers tools with `list_tools()` and invokes them with `call_tool()`. MCP is only the agent↔tool transport — the LLM↔agent ReAct protocol stays hand-rolled.
 
-**Transport:** in-process / in-memory (`mcp.shared.memory.create_connected_server_and_client_session`). No subprocess, no ports. This helper is semi-public and touches a private attribute, so it is isolated behind a single adapter module (`graph/mcp_pool.py`) — swapping to stdio / Streamable-HTTP / the v2 `mcp.client.Client` is then a one-file change. The exact `==1.28.0` pin is deliberate: the SDK's v2 line renames the high-level server and removes the in-memory helper.
+**Transport:** in-process / in-memory (`mcp.shared.memory.create_connected_server_and_client_session`). No subprocess, no ports. This helper is semi-public and touches a private attribute, so it is isolated to the MCP package under **`tools/mcp/`** (`server.py` builds a server, `pool.py` is the `SessionPoolManager`) — swapping to stdio / Streamable-HTTP / the v2 `mcp.client.Client` is then a localized change. The exact `==1.28.0` pin is deliberate: the SDK's v2 line renames the high-level server and removes the in-memory helper.
+
+**All MCP/tool code lives under `tools/`** (ingestion, descriptions, table-naming, MCP servers, the pool manager).
+
+**Pooling:** one MCP pool **per session** (not per query) — built lazily on first query, reused, idle/LRU-evicted, closed on session delete + shutdown. Queries on a session are serialized by a per-session lock (the DuckDB connection is not concurrency-safe).
 
 **Use the official `mcp` SDK only** — do **not** add `langchain-mcp-adapters` or any third-party MCP wrapper.
 
@@ -27,6 +31,12 @@
 **DuckDB** queries the Parquet files directly, read-only.
 
 **Why:** Each MCP server wraps one Parquet file and runs the LLM's `SELECT` against it via DuckDB (`read_parquet(...)`). DuckDB reads Parquet natively (no load step) and ships native `STDDEV`/`VARIANCE`, so the old pandas→in-memory-SQLite copy and the custom SQLite aggregate functions are removed. SQLite remains the **application metadata** store (below); DuckDB is only the **data-source query engine**.
+
+## Agent Memory
+
+**Durable per-session memory** via LangGraph's **`SqliteSaver` checkpointer** (`langgraph-checkpoint-sqlite`), keyed by `thread_id = session_id`.
+
+**Why:** Sessions are long-lived agent contexts; prior Q&A turns feed into later questions. The checkpoint lives in its own SQLite file (separate from the Alembic-managed metadata DB) and survives restarts. Only the accumulating `conversation` is kept in the durable state; per-query scratch is reset each query. Because each query runs in its own `asyncio.run`, the **async** saver (`AsyncSqliteSaver`) is opened inside the run and the graph is compiled with it per query (the file-backed store makes this durable across the ephemeral savers).
 
 ## LLM Provider
 
@@ -66,6 +76,7 @@ React/Vite frontend deferred to Phase 4.
 | langgraph | ≥0.2 | Agent graph (async nodes) |
 | mcp | ==1.28.0 | Official Model Context Protocol SDK (FastMCP server + client) — pinned |
 | duckdb | ≥1.1,<2 | Read-only SQL over the Parquet data sources |
+| langgraph-checkpoint-sqlite | latest | Durable per-session agent memory (`SqliteSaver`/`AsyncSqliteSaver`) |
 | google-genai | ≥1.0 | Gemini SDK |
 | pandas | ≥2.2 | CSV→Parquet ingestion + schema extraction |
 | pyarrow | ≥14 | Parquet engine for pandas |
