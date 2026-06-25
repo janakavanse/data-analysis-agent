@@ -66,37 +66,66 @@ dispatcher, **not** FastMCP). Read methods (Phase A):
 **Pagination:** opaque keyset cursor (base64 of the last `(created_at, id)`); `nextCursor` omitted on the
 last page; page size `mcp_list_page_size` (default 50).
 
-## Phase B — Granular mutation methods (specced; deferred impl)
+## Phase B — Granular mutation methods (implemented)
 
-Additional JSON-RPC methods on `POST /mcpserver/{id}`, each followed by a **partial sync** that re-asks the
-LLM only for the downstream capabilities (soft-delete-only, version-bumping, transactional — same apply
-rules):
+Six client-driven JSON-RPC mutation methods on `POST /mcpserver/{id}`. The client supplies a
+stage-shaped capability `definition` in `params`; the method applies it, then runs a **partial sync** that
+re-asks the LLM for the downstream capabilities. Params: `{"definition": {...}}`. Result:
+`{ok, version, applied:{child,op,key}, cascade:{tools,prompts}, status}`.
 
-| Method | Effect | Partial-sync cascade |
-|--------|--------|----------------------|
-| `tools/add` | Insert a tool | → re-generate **prompts** |
-| `tools/update` | Update a tool | → re-generate **prompts** |
-| `prompts/add` | Insert a prompt | (no cascade) |
-| `prompts/update` | Update a prompt | (no cascade) |
-| `resources/add` | Insert a resource (new entity) | → re-generate **tools**, then **prompts** |
-| `resources/update` | Update a resource | → re-generate **tools**, then **prompts** |
+| Method | Effect | Cascade (additive) |
+|--------|--------|--------------------|
+| `tools/add` | Insert a tool | → regenerate **prompts** |
+| `tools/update` | Update a tool (by `name`) | → regenerate **prompts** |
+| `prompts/add` | Insert a prompt | (none) |
+| `prompts/update` | Update a prompt (by `name`) | (none) |
+| `resources/add` | Insert a resource (entity) | → regenerate **tools**, then **prompts** |
+| `resources/update` | Update a resource (by `uri`) | → regenerate **tools**, then **prompts** |
 
-Cascade chain: **resources (entities) → tools (GET-APIs over entities) → prompts (over tools)**. Adding a
-CSV to an existing dataset = a new physical table = `resources/add` (a new entity), which cascades a
-partial sync of tools + prompts. Until implemented these methods return `-32601`.
+Rules (differ deliberately from the full `/sync`):
+- **Two-tier deletion semantics.** The full `/sync` regenerates everything and **soft-deletes** dropped
+  capabilities. A granular mutation cascade is **ADDITIVE**: it inserts new + updates matched downstream
+  rows and **never** soft-deletes existing ones (least astonishment — a single add must not silently drop
+  a sibling). The full `/sync` remains the only pruning operation.
+- **Single version bump.** The explicit mutation + its whole cascade are one transaction and bump
+  `version` exactly once; all rows written carry that `created_version`.
+- **`add` rejects an active name/uri; `update` requires one.** A duplicate-active key → `-32602` (never an
+  IntegrityError); an unknown key on update → `-32602`. A name whose only match is a tombstone re-inserts
+  a fresh active row (partial-unique is over active rows).
+- **Write-time `sql_template` guard** (`tools/add`/`update`): the SQL is `_guard_select`-checked
+  (single-statement read-only SELECT/WITH; no `ATTACH`/`COPY`/`PRAGMA`/`INSTALL`/`LOAD`); zero-param SQL is
+  compile-checked (`LIMIT 0`); every `$param` in the SQL must be declared in `input_schema.properties`.
+  A bad template → `-32602`, never persisted.
+- **Transaction + pool refresh.** A failed mutation rolls back (nothing persists); a successful one
+  commits, then closes the pools of sessions attached to the server (`close_sessions_for_server`,
+  post-commit) so the agent re-reads the new capabilities.
+- `resources/add` of an entity not backed by a physical table cascades **no new tools** (tool generation
+  is grounded in physical tables); adding a CSV (a new physical table) is the path that grows tools.
+- Method names are exactly as above; any other method → `-32601`.
 
-## Phase B — Hybrid agent consumption (specced; deferred impl)
+## Phase B — Hybrid agent consumption (implemented)
 
-The session pool will also surface a server's generated GET-API tools (alongside the generic `query`
-tool). The agent prefers a matching generated tool (calling it by name with the declared parameters) and
-falls back to the generic SQL tool for anything not covered. This requires the pool/planning/execution to
-present both surfaces; the generic-SQL path (Phase A) remains the fallback.
+The session pool surfaces each server's active generated GET-API tools alongside the generic `query`
+tool. **Addressing stays single-level with an optional `capability`:**
+`{"tool":"<server>","arguments":{"query":"SELECT…"}}` runs free SQL (Phase A, unchanged);
+`{"tool":"<server>","capability":"<gen tool>","arguments":{...params}}` runs that generated tool. Absent
+`capability` ⇒ free SQL (so a generated tool literally named `query` does not collide). Generated tools
+execute via the shared read-only path (`_run_select_params` on the server's DuckDB connection — same guard
+as the dispatcher), so there is no second, unguarded SQL route. The agent prompt lists, per server, the
+generic SQL option and any pre-built tools (name + params + description) and is told to prefer a matching
+pre-built tool, else write SQL. The offline stub keeps emitting free SQL (the golden path is unchanged);
+the hybrid routing is covered by pool/execution unit tests. The trace (`query_history_json`) carries an
+optional `capability` only on generated-tool calls (free-SQL entries are byte-identical to Phase A).
 
 ## Success Criteria
 
 - Creating a server runs sync and yields ≥1 tool, ≥1 resource (the schema), ≥1 prompt — offline (stub).
-- Re-syncing bumps the version, updates matched capabilities, and **soft-deletes** (never removes) dropped
-  ones; a re-added name inserts a fresh active row without colliding with the tombstone.
+- Re-syncing (full `/sync`) bumps the version, updates matched, and **soft-deletes** dropped ones; a
+  re-added name inserts a fresh active row without colliding with the tombstone.
 - `POST /mcpserver/{id}` answers all six read methods with correct shapes, cursor pagination, and the
   `-32601`/`-32602`/`isError` error mapping.
-- A generated tool's SQL is validated at apply; `tools/call` binds parameters safely (no injection).
+- The six mutation methods: `add`/`update` enforce the active-key rules (`-32602`), bump version once,
+  cascade **additively** (no sibling soft-deleted), reject a bad `sql_template` (`-32602`), persist nothing
+  on failure, and refresh pools on success. An unimplemented method (e.g. `tools/delete`) → `-32601`.
+- Hybrid: the agent can call a generated tool by `capability` (params bound, read-only-guarded) and still
+  run free SQL when `capability` is absent; the golden path is unchanged.

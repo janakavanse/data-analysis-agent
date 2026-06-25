@@ -136,7 +136,7 @@ One natural language question within a Session.
 | status | TEXT | yes | `pending` / `completed` / `failed` |
 | error_message | TEXT | no | Error detail if failed |
 | iteration_count | INTEGER | no | Number of tool calls to reach the answer |
-| query_history_json | TEXT | no | JSON array of `{"tool": str, "arguments": dict, "result": str, "is_error": bool}` — the single-level tool-call trace (`tool` = server) |
+| query_history_json | TEXT | no | JSON array of `{"tool", "arguments", "result", "is_error", "capability"?}` — the tool-call trace (`tool` = server; optional `capability` only on generated GET-API tool calls) |
 | input_tokens / output_tokens / total_tokens | INTEGER | no | Token usage across LLM calls |
 | estimated_cost_usd | REAL | no | Estimated API cost |
 | api_request_count | INTEGER | no | Number of LLM API calls |

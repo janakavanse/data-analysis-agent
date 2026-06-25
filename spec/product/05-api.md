@@ -100,10 +100,16 @@ endpoint dispatching on `method`. Request: `{"jsonrpc":"2.0","id":…,"method":"
 - **Errors:** unknown `method` → `-32601`; invalid params/cursor → `-32602`; tool-execution failures use
   `isError:true`. Capabilities are filtered to **active** rows (`deleted_at IS NULL`).
 
-**Mutation methods (Phase B — specced in capability 4, not implemented yet):** `tools/add`,
-`tools/update`, `prompts/add`, `prompts/update`, `resources/add`, `resources/update`. Adding/updating a
-**resource** triggers a partial sync of **tools + prompts**; adding/updating a **tool** triggers a partial
-sync of **prompts**; prompt changes have no cascade. Until implemented, these return `-32601`.
+**Mutation methods (Phase B — implemented):** `tools/add`, `tools/update`, `prompts/add`,
+`prompts/update`, `resources/add`, `resources/update`. Params `{"definition": <stage-shaped capability>}`;
+result `{ok, version, applied:{child,op,key}, cascade:{tools,prompts}, status}`. Each applies the supplied
+capability then runs an **additive** partial sync of the downstream capabilities (resource → tools then
+prompts; tool → prompts; prompt → none) — additive means insert/update only, **never** soft-delete a
+sibling (unlike the full `/sync`). One transaction, one version bump; `add` rejects a duplicate-active
+key and `update` requires an existing one (`-32602`); `tools/add`/`update` reject a non-SELECT / multi-
+statement / forbidden `sql_template` or a `$param` not declared in `input_schema` (`-32602`); a failed
+mutation persists nothing; a successful one closes attached session pools (post-commit). Any other method
+(e.g. `tools/delete`) → `-32601`. See capability 4 for the full contract.
 
 ---
 

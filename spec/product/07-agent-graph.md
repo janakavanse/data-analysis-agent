@@ -2,8 +2,10 @@
 
 > **Mandatory pre-coding checklist** — answer all before writing node code. (See `ai-agents.md` §10.)
 >
-> 1. **Action type:** A **single-level** MCP tool call naming an MCP server: `{"tool": "<server>",
->    "arguments": {"query": "<SQL>"}}` (generic read-only SELECT over that server's tables).
+> 1. **Action type:** A single-level MCP tool call naming an MCP server. Free SQL: `{"tool": "<server>",
+>    "arguments": {"query": "<SQL>"}}` (generic read-only SELECT over that server's tables). Phase B adds an
+>    optional `capability` to call a generated GET-API tool: `{"tool": "<server>", "capability":
+>    "<gen tool>", "arguments": {<params>}}`. Absent `capability` ⇒ free SQL.
 > 2. **Termination signal:** Response starts with `FINAL ANSWER:`.
 > 3. **Recoverable vs fatal:** DuckDB SQL errors and non-SELECT SQL → recoverable (the MCP tool returns
 >    `isError=True`, fed back). Unknown server name → recoverable. LLM-call failure, missing Parquet,
@@ -47,7 +49,7 @@ class AgentState(TypedDict, total=False):
     conversation: list[dict]   # [{"question": str, "answer": str}]
 
     # Per-query scratch (reset via the ainvoke input each query)
-    action_history: list[dict]   # [{"tool": str, "arguments": dict, "result": str, "is_error": bool}]
+    action_history: list[dict]   # [{"tool", "arguments", "result", "is_error", "capability"?}]  capability only on generated-tool calls
     iteration_count: int
     llm_response: str
     answer: str
