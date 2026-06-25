@@ -55,7 +55,7 @@ def _make_csv() -> bytes:
 def test_home_page_loads(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert "Data Sources" in r.text
+    assert "Datasets" in r.text
     assert "Sessions" in r.text
 
 
