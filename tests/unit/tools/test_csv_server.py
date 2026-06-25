@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
 
-from data_analysis_agent.graph.mcp.csv_server import build_server
+from data_analysis_agent.tools.mcp.server import build_server
 
 
 def _source(tmp_path):

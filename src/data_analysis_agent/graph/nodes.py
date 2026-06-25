@@ -21,7 +21,7 @@ from data_analysis_agent.graph.execution import (
     parse_tool_call,
     strip_json_fences,
 )
-from data_analysis_agent.graph.mcp_pool import close_pool, get_pool, open_pool
+from data_analysis_agent.tools.mcp.pool import close_pool, get_pool, open_pool
 from data_analysis_agent.graph.persistence import mark_completed, mark_failed
 from data_analysis_agent.graph.planning import build_plan_prompt
 from data_analysis_agent.graph.state import AgentState

@@ -18,7 +18,7 @@ from importlib.metadata import version
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
-from data_analysis_agent.graph.mcp.csv_server import DEFAULT_MAX_ROWS, build_server
+from data_analysis_agent.tools.mcp.server import DEFAULT_MAX_ROWS, build_server
 
 # This module relies on the in-memory transport helper, which exists in mcp 1.x and is
 # removed in the 2.x line. Fail loudly rather than mysteriously if an incompatible major

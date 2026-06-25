@@ -4,7 +4,7 @@ import asyncio
 
 import pandas as pd
 
-from data_analysis_agent.graph.mcp_pool import close_pool, get_pool, open_pool
+from data_analysis_agent.tools.mcp.pool import close_pool, get_pool, open_pool
 
 
 def _source(tmp_path, name, table, frame):

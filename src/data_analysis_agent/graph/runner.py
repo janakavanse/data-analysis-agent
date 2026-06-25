@@ -5,7 +5,7 @@ import structlog
 from data_analysis_agent.db.models import AgentRunRow
 from data_analysis_agent.db.session import create_db_session, init_db
 from data_analysis_agent.graph.agent import agent_graph
-from data_analysis_agent.graph.mcp_pool import close_pool
+from data_analysis_agent.tools.mcp.pool import close_pool
 from data_analysis_agent.graph.state import AgentState
 
 log = structlog.get_logger()

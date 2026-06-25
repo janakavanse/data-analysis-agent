@@ -40,7 +40,7 @@ pool + 3-step loop, D durable memory.
 - [x] Plan approved
 - [x] Session report opened
 - [x] Phase A: specs rewritten (07-agent-graph, 02-architecture, 02-nl-query, 03-sessions, tech-stack, 04-data-model) for session-scoped pool + durable memory + tools/ relocation
-- [ ] Phase B: relocate MCP to tools/
+- [x] Phase B: relocated MCP code → `tools/mcp/server.py` + `tools/mcp/pool.py` (git mv); tests → `tests/unit/tools/`; imports updated; behavior unchanged; **30 passed**
 - [ ] Phase C: session pool + 3-step loop
 - [ ] Phase D: durable memory
 
