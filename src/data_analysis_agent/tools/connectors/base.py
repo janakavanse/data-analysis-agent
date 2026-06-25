@@ -40,7 +40,7 @@ def get_connector(dataset: dict, tables: list[dict]) -> DatasetConnector:
             are disabled (the import of the external connector is lazy so its driver is optional).
     """
     dtype = (dataset.get("type") or "parquet").lower()
-    if dtype == "parquet":
+    if dtype in ("parquet", "csv"):  # "csv" is the legacy alias for an internal parquet dataset
         from data_analysis_agent.tools.connectors.parquet import ParquetConnector
         return ParquetConnector(dataset, tables)
     if dtype in ("postgresql", "postgres"):

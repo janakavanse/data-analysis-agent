@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 
 from data_analysis_agent.graph.state import AgentState
 
@@ -9,25 +8,25 @@ from data_analysis_agent.graph.state import AgentState
 _PLAN_TAG = "<node:plan_action>"
 
 
-def build_plan_prompt(state: AgentState, tools: list[dict], column_names: list[str]) -> str:
+def build_plan_prompt(state: AgentState, datasets: list[dict]) -> str:
     """Assemble the full plan_action prompt for the current ReAct turn.
 
-    Concatenates the intro, available-tools block, dataset schema, the user question,
-    prior tool-call history, and the response-format instructions. Tools and schema are
-    supplied by the caller (read from the session's pool), not stored in state.
+    The available-tools block is grouped by dataset (tool = dataset name) with one capability per
+    table; ``datasets`` is the grouped snapshot from the ``SessionPoolManager`` (not stored in
+    state). Includes the durable conversation memory, the question, prior tool-call history, and the
+    two-level response format.
 
     Args:
         state: The current agent state carrying the question and history.
-        tools: The session's MCP tool descriptors (from ``SessionPoolManager``).
-        column_names: The ``table.column`` schema for the session's sources.
+        datasets: Grouped tool list ``[{dataset, tool_description, capabilities:[{table, description,
+            columns, parameter_schema}]}]``.
 
     Returns:
         The complete prompt string sent to the LLM.
     """
     lines = _intro_lines()
     lines += _conversation_lines(state.get("conversation", []))
-    lines += _tools_lines(tools)
-    lines += _schema_lines(column_names)
+    lines += _tools_lines(datasets)
     lines.append(f"User question: {state['question']}")
     lines += _history_lines(state.get("action_history", []))
     lines += _response_format_lines()
@@ -51,10 +50,9 @@ def _intro_lines() -> list[str]:
     return [
         _PLAN_TAG,
         "You are a data-analysis agent operating in a ReAct (Reason + Act) loop.",
-        "On each turn you either (a) call a tool to gather more data, or (b) give the",
-        "final answer. After each tool call you will see its result and may call another",
-        "tool. Build up a plan across multiple queries — and across multiple tables when",
-        "more than one data source is attached — until you can answer the question.",
+        "On each turn you either (a) call a tool capability to gather more data, or (b) give the",
+        "final answer. After each call you will see its result and may call another. Build up a plan",
+        "across multiple queries — and across multiple tools/tables — until you can answer.",
         "",
         "SQL dialect: DuckDB. Notes:",
         "- Aggregates available natively: COUNT, SUM, AVG, MIN, MAX, STDDEV, VARIANCE, MEDIAN, QUANTILE.",
@@ -65,35 +63,30 @@ def _intro_lines() -> list[str]:
     ]
 
 
-def _tools_lines(tools: list[dict]) -> list[str]:
-    """Return the available-tools block, or an empty list when no tools are loaded."""
-    if not tools:
+def _tools_lines(datasets: list[dict]) -> list[str]:
+    """Return the grouped available-tools block (tool = dataset, capability = table)."""
+    if not datasets:
         return []
-    lines = ["Available tools (call a tool by its exact name):", ""]
-    for tool in tools:
-        table = tool.get("table_name")
-        suffix = f" (queries table: {table})" if table else ""
-        lines.append(f"Tool: {tool['name']}{suffix}")
-        lines.append(f"  Description: {tool.get('description', '')}")
-        lines.append(f"  Parameters: {json.dumps(tool.get('parameter_schema', {}))}")
+    lines = [
+        "Available tools. Each TOOL is a dataset; each CAPABILITY is one of its tables.",
+        "Call a tool by its dataset name and one of its table capabilities.",
+        "",
+    ]
+    for ds in datasets:
+        lines.append(f"Tool: {ds['dataset']}")
+        if ds.get("tool_description"):
+            lines.append(f"  {ds['tool_description']}")
+        capabilities = ds.get("capabilities", [])
+        for cap in capabilities:
+            lines.append(f"  capability: {cap['table']}")
+            if cap.get("description"):
+                lines.append(f"    {cap['description']}")
+            if cap.get("columns"):
+                lines.append(f"    columns: {', '.join(cap['columns'])}")
+        if len(capabilities) > 1:
+            tables = ", ".join(c["table"] for c in capabilities)
+            lines.append(f"  (a capability's SQL may JOIN sibling tables in this dataset: {tables})")
         lines.append("")
-    return lines
-
-
-def _schema_lines(column_names: list[str]) -> list[str]:
-    """Return the dataset schema block, grouping ``table.column`` names by table."""
-    table_cols: dict[str, list[str]] = defaultdict(list)
-    for col in column_names:
-        if "." in col:
-            table, name = col.split(".", 1)
-            table_cols[table].append(name)
-        else:
-            table_cols["data"].append(col)
-
-    lines = [f"Dataset schema ({len(table_cols)} table(s) — query each by its exact name):"]
-    for table, cols in table_cols.items():
-        lines.append(f"  Table: {table} — Columns: {', '.join(cols)}")
-    lines.append("")
     return lines
 
 
@@ -103,7 +96,7 @@ def _history_lines(history: list[dict]) -> list[str]:
         return []
     lines = ["", "Previous tool calls and results:"]
     for i, entry in enumerate(history, 1):
-        lines.append(f'[{i}] tool: {entry["tool"]}')
+        lines.append(f'[{i}] tool: {entry["tool"]} capability: {entry.get("capability", "")}')
         lines.append(f'    arguments: {json.dumps(entry["arguments"])}')
         if entry.get("is_error"):
             lines.append(f'    result: Error: {entry["result"]}')
@@ -121,8 +114,8 @@ def _response_format_lines() -> list[str]:
         "(no explanations, no markdown, no backticks):",
         "",
         "1. A JSON tool call to gather more data:",
-        '   {"tool": "<tool_name>", "arguments": {"query": "SELECT ..."}}',
-        "   ('tool' MUST be one of the exact tool names listed above.)",
+        '   {"tool": "<dataset>", "capability": "<table>", "arguments": {"query": "SELECT ..."}}',
+        "   ('tool' is a dataset name above; 'capability' is one of that dataset's tables.)",
         "",
         "2. The final answer, when you have enough information:",
         "   FINAL ANSWER: <your complete answer here>",

@@ -39,15 +39,19 @@ def _describe_tool_reply(prompt: str) -> str:
 
 
 def _plan_action_reply(prompt: str) -> str:
-    """Build a stub plan_action response: a count query, then a final answer."""
+    """Build a stub plan_action response: a count query on the first capability, then a final answer.
+
+    Emits the two-level call {tool=dataset, capability=table}. Picks the first advertised dataset
+    and its first table capability (deterministic — tests should not assume a specific table).
+    """
     if "[1] tool:" in prompt:
         return (
             "FINAL ANSWER: (stub) Based on the query results, the data analysis is complete. "
             "Set DATAANALYSIS_OPENROUTER_API_KEY to get real AI-powered answers."
         )
-    tool_match = re.search(r"Tool:\s+(\S+)", prompt)
-    table_match = re.search(r"Table:\s+(\w+)\s+—\s+Columns:", prompt)
-    table = table_match.group(1) if table_match else "data"
-    tool = tool_match.group(1) if tool_match else f"{table}__run_query"
+    dataset_match = re.search(r"Tool:\s+(.+)", prompt)         # dataset name (may contain spaces)
+    capability_match = re.search(r"capability:\s+(\w+)", prompt)  # first table
+    dataset = dataset_match.group(1).strip() if dataset_match else "data"
+    table = capability_match.group(1) if capability_match else "data"
     query = f"SELECT COUNT(*) as total_rows FROM {table}"
-    return json.dumps({"tool": tool, "arguments": {"query": query}})
+    return json.dumps({"tool": dataset, "capability": table, "arguments": {"query": query}})

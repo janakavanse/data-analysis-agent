@@ -42,8 +42,8 @@ async def plan_action(state: AgentState) -> AgentState:
     run_id = state.get("run_id", "")
     session_id = state.get("session_id", "")
     try:
-        tools, column_names = get_manager().snapshot(session_id)
-        result = get_llm_client().complete(build_plan_prompt(state, tools, column_names))
+        datasets = get_manager().snapshot(session_id)
+        result = get_llm_client().complete(build_plan_prompt(state, datasets))
         response = result.text.strip()
         return _apply_final_answer(_accumulate_usage(state, result, response), response, run_id)
     except Exception as exc:
@@ -65,8 +65,10 @@ async def execute_action(state: AgentState) -> AgentState:
         if call is None:
             log.warning("execute_action.bad_json", run_id=run_id, error=str(parse_error))
             return loop_back(state, invalid_call_entry(parse_error), max_iterations)
-        result_text, is_error = await get_manager().call_tool(session_id, call["tool"], call["arguments"])
-        entry = observation(call["tool"], call["arguments"], result_text, is_error)
+        result_text, is_error = await get_manager().call_tool(
+            session_id, call["tool"], call["capability"], call["arguments"]
+        )
+        entry = observation(call["tool"], call["capability"], call["arguments"], result_text, is_error)
         return loop_back(state, entry, max_iterations)
     except Exception as exc:
         log.error("execute_action.failed", run_id=run_id, error=str(exc))
