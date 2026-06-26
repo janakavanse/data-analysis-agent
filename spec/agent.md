@@ -1,218 +1,314 @@
 # Agent
 
-> Required when the project uses an agent framework. Delete this file if your project has no agent framework.
->
-> If your project has no agent framework (e.g., a simple script or single-LLM API call), delete this file.
->
-
----
-
 ## Agent Architecture Pattern
 
-<!-- FILL IN: Which pattern does this agent follow? Choose one and describe why. -->
+**Chosen:** Graph (LangGraph) — the query pipeline has clearly ordered steps with a conditional error edge and a Phase 2 extension point (chart generation). The linear sequence with one conditional branch is a minimal `StateGraph` — simpler than a tool-use loop (no dynamic tool selection needed) and does not require multi-agent overhead.
 
-| Pattern | Use when |
-|---------|----------|
-| **Single-agent loop** | One LLM drives a deterministic tool-call loop. No branches, no handoffs. |
-| **Graph (LangGraph)** | Multi-step pipeline with conditional edges, checkpointing, or parallel nodes. |
-| **Multi-agent** | Specialised sub-agents with distinct roles; orchestrator routes between them. |
-| **Supervisor** | One supervisor LLM dispatches to worker agents based on task type. |
-| **Human-in-the-loop** | Execution pauses at defined checkpoints for user review or approval. |
-
-**Chosen:** <!-- state pattern + one-sentence rationale -->
+Patterns applied from `harness/patterns/agentic-ai.md`:
+- **Prompt Chaining** (#1) — `load_dataset` → `analyze_query` → `extract_table` → `finalize` is a fixed ordered chain.
+- **Tool Use** (#5) — pandas DataFrame operations are in-process "tools" called deterministically by nodes.
+- **Exception Handling and Recovery** (#12) — every node wraps its logic; errors route to `handle_error`.
 
 ---
 
 ## LLM Provider & Model
 
-<!-- FILL IN: Which model drives each agent/node? State provider, model ID, and why. -->
+| Node | Provider | Model ID | Rationale |
+|------|----------|----------|-----------|
+| `analyze_query` | Google Gemini | `gemini-2.5-flash` (env: `AGENT_LLM_MODEL`) | Single node that needs strong instruction-following to produce a structured text answer with an embedded table spec; Flash balances quality and latency well for tabular Q&A |
 
-| Agent / Node | Provider | Model ID | Rationale |
-|-------------|----------|----------|-----------|
-| <!-- node --> | Anthropic | <!-- e.g. claude-sonnet-4-6 --> | <!-- latency vs. quality trade-off --> |
+**Fallback behaviour:** The Gemini API call is wrapped in a try/except inside `analyze_query`. On any exception (4xx, 5xx, timeout), `state["error"]` is set and the graph routes to `handle_error`, which marks the run as "failed" and returns the error message to the API caller. No retry in Phase 1 (retry/back-off is a Phase 4 concern per the roadmap).
 
-**Fallback behaviour:** <!-- Production resilience only: retry/backoff, degraded mode, or a surfaced error if the LLM API is unavailable or rate-limited. NOT a test/offline stub path — tests call the real API with keys from `.env`. -->
+**Prompt strategy:** System prompt (loaded from `src/prompts/analyst.md`) + user turn containing:
+- Column names and dtypes of the active DataFrame(s)
+- Output of `df.describe()` (numeric stats)
+- `df.head(5)` formatted as Markdown table
+- The user's question
 
-**Prompt strategy:** <!-- System/user split, few-shot examples, structured output (tool_use / JSON mode)? -->
+The prompt instructs Gemini to respond with:
+1. A plain-text answer paragraph.
+2. (Optional) A fenced code block tagged `table_json` containing a JSON array of objects — one object per result row — when the answer includes tabular data.
+3. (Phase 2) A fenced code block tagged `chart_spec` containing a JSON object describing the chart type, x/y columns, and title.
 
 ---
 
 ## Tools & Tool Calling
 
-<!-- FILL IN: Every tool the agent can call. -->
+The agent does not use LLM-driven dynamic tool selection. Each node calls its own deterministic in-process function. There are no registered LangGraph tools.
 
-| Tool name | Description | Inputs | Output | Side-effects |
-|-----------|-------------|--------|--------|--------------|
-| <!-- name --> | <!-- what it does --> | <!-- params --> | <!-- return type --> | <!-- DB write, API call, file write, etc. --> |
-
-**Tool selection strategy:** <!-- How does the agent decide which tool to call? (LLM choice, rule-based routing, forced single tool) -->
-
-**Tool failure handling:** <!-- retry, fallback, abort — per tool or global policy? -->
+| Operation | Node | Side-effects |
+|-----------|------|--------------|
+| Read CSV file from disk | `load_dataset` | None (read-only) |
+| Compute schema + stats (`df.describe()`, `df.head(5)`) | `load_dataset` | None |
+| Call Gemini API | `analyze_query` | External API call |
+| Parse `table_json` block from answer text | `extract_table` | None |
+| Generate matplotlib PNG, encode base64 (Phase 2) | `generate_chart` | None (in-memory) |
+| Write `RunRow` to SQLite | `finalize` via runner | DB write |
 
 ---
 
 ## Agent State
 
-<!-- FILL IN: The full state type. Every field must be named, typed, and annotated with what populates it. -->
-
 ```python
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     # Identity
-    run_id: int                          # set at initialisation
+    run_id: str            # set by runner before graph invocation
+    session_id: str        # set by runner; identifies the browser session
+    dataset_id: str        # set by runner; primary dataset being queried
+    dataset_ids: list[str] # set by runner (Phase 3 multi-file); may be empty in Ph1-2
 
     # Input
-    # ...                                # fields populated from the trigger
+    question: str          # the user's natural-language question
 
-    # Pipeline data (populated progressively by nodes)
-    # ...
-
-    # Output
-    # ...                                # final result fields
+    # Pipeline data — populated progressively by nodes
+    dataframe_context: str # set by load_dataset: schema + stats + head as Markdown string
+    answer_text: str       # set by analyze_query: Gemini's prose answer
+    table_data: list[dict] | None  # set by extract_table: parsed rows, or None
+    chart_b64: str | None  # set by generate_chart (Phase 2): base64 PNG, or None
 
     # Control
-    error: str | None                    # set by any node on fatal failure
-    checkpoint: str | None              # last completed node (for resume)
+    error: str | None      # set by any node on fatal failure; routes to handle_error
 ```
 
 ---
 
 ## Nodes / Steps
 
-<!-- FILL IN: One section per node. For single-agent loops, describe each "step" or "tool call phase." -->
+### `load_dataset`
 
-### `node_[name]`
+**Reads from state:** `session_id`, `dataset_id` (Phase 3: `dataset_ids`)
 
-**Reads from state:** <!-- field names -->
+**Writes to state:** `dataframe_context`, or `error` on failure
 
-**Writes to state:** <!-- field names -->
-
-**LLM call:** <!-- yes/no; if yes: prompt template summary, model used, output format -->
+**LLM call:** No
 
 **External calls:**
 
 | System | Operation | On Failure |
 |--------|-----------|------------|
-| <!-- system --> | <!-- what it calls --> | <!-- fatal (set error) / partial (log + continue) / retry --> |
+| Filesystem | Read CSV from `data/uploads/<session_id>/<file_path>` via pandas `read_csv` | Fatal — set `error`, route to `handle_error` |
+| SQLite | Fetch `DatasetRow` file path by `dataset_id` | Fatal — set `error`, route to `handle_error` |
 
-**Behaviour:** <!-- One paragraph. What decision or transformation does this node perform? -->
+**Behaviour:** Fetches the dataset record from SQLite to get the file path, reads the CSV with pandas, computes schema + `.describe()` + `head(5)` as a Markdown string, and writes it to `state["dataframe_context"]`. In Phase 3, loads multiple DataFrames by iterating `dataset_ids` and concatenates their contexts.
+
+---
+
+### `analyze_query`
+
+**Reads from state:** `dataframe_context`, `question`
+
+**Writes to state:** `answer_text`, or `error` on failure
+
+**LLM call:** Yes — `GeminiProvider.call_model(user_turn, system=analyst_prompt)`
+
+**External calls:**
+
+| System | Operation | On Failure |
+|--------|-----------|------------|
+| Google Gemini API | `generate_content` with system prompt + user turn | Fatal — set `error`, route to `handle_error` |
+
+**Behaviour:** Constructs a user turn from `dataframe_context` and `question`, calls Gemini with the analyst system prompt, writes the raw response text to `state["answer_text"]`. The response is expected to contain a prose paragraph and optionally a `table_json` fenced block and (Phase 2) a `chart_spec` fenced block.
+
+---
+
+### `extract_table`
+
+**Reads from state:** `answer_text`
+
+**Writes to state:** `table_data` (list of dicts, or `None` if no table block found)
+
+**LLM call:** No
+
+**External calls:** None
+
+**Behaviour:** Searches `answer_text` for a fenced code block tagged ` ```table_json `. If found, parses the JSON array and writes it to `state["table_data"]`. If the block is absent or the JSON is malformed, sets `table_data = None` (non-fatal; the prose answer is still returned). Never sets `error` — table extraction failure is graceful degradation, not a fatal error.
+
+---
+
+### `generate_chart` (Phase 2 only)
+
+**Reads from state:** `answer_text`, `dataframe_context`, `dataset_id`, `session_id`
+
+**Writes to state:** `chart_b64` (base64-encoded PNG string, or `None` if no chart spec)
+
+**LLM call:** No
+
+**External calls:** None (in-process matplotlib)
+
+**Behaviour:** Searches `answer_text` for a fenced code block tagged ` ```chart_spec `. If found, parses the JSON object (`{type, x_col, y_col, title}`), loads the DataFrame from disk (re-read), calls matplotlib to render the chart, encodes the PNG as base64, and writes to `state["chart_b64"]`. If no chart spec block is present, sets `chart_b64 = None` (non-fatal). On matplotlib error, sets `chart_b64 = None` and logs a warning — does not set `error`.
+
+---
+
+### `handle_error`
+
+**Reads from state:** `error`, `run_id`
+
+**Writes to state:** `status` = `"failed"`
+
+**LLM call:** No
+
+**External calls:** None (DB write happens in the runner after graph completion)
+
+**Behaviour:** Sets `state["status"] = "failed"`. The runner observes the state after graph termination and writes the error to the `RunRow`. Logs the error with `run_id` context.
+
+---
+
+### `finalize`
+
+**Reads from state:** `answer_text`, `table_data`, `chart_b64`
+
+**Writes to state:** `status` = `"completed"`
+
+**LLM call:** No
+
+**External calls:** None (DB write happens in the runner after graph completion)
+
+**Behaviour:** Sets `state["status"] = "completed"`. No other transformation — the runner reads state fields after graph termination and persists them to `RunRow`.
 
 ---
 
 ## Graph / Flow Topology
 
-<!-- FILL IN: ASCII diagram of node flow. Show ALL conditional edges explicitly. -->
+### Phase 1
 
 ```
 START
   │
   ▼
-node_a ──(error)──► node_handle_error ──► END
+load_dataset ──(error)──► handle_error ──► END
   │
   ▼
-node_b ──(condition)──► node_c
-  │                         │
-  │                         ▼
-  └──────────────────► node_finalize
-                             │
-                             ▼
-                            END
+analyze_query ──(error)──► handle_error
+  │
+  ▼
+extract_table
+  │
+  ▼
+finalize ──► END
+```
+
+### Phase 2 (adds generate_chart)
+
+```
+START
+  │
+  ▼
+load_dataset ──(error)──► handle_error ──► END
+  │
+  ▼
+analyze_query ──(error)──► handle_error
+  │
+  ▼
+extract_table
+  │
+  ▼
+generate_chart   ← non-fatal; chart_b64 = None if no chart spec
+  │
+  ▼
+finalize ──► END
 ```
 
 **Conditional edges:**
 
 | Source node | Condition | Target |
 |-------------|-----------|--------|
-| <!-- node --> | <!-- e.g. state["error"] is not None --> | <!-- target node --> |
+| `load_dataset` | `state.get("error")` is not None | `handle_error` |
+| `load_dataset` | `state.get("error")` is None | `analyze_query` |
+| `analyze_query` | `state.get("error")` is not None | `handle_error` |
+| `analyze_query` | `state.get("error")` is None | `extract_table` |
+| `extract_table` | always | `generate_chart` (Phase 2) or `finalize` (Phase 1) |
+| `generate_chart` | always | `finalize` |
+| `finalize` | always | END |
+| `handle_error` | always | END |
 
 ---
 
 ## Memory & Context
 
-<!-- FILL IN: How does the agent remember things across turns, steps, or runs? -->
-
 | Scope | Mechanism | What is stored |
 |-------|-----------|----------------|
-| **Within a run** | LangGraph state | All in-progress data |
-| **Across runs** | <!-- DB / vector store / none --> | <!-- e.g. past results, user prefs --> |
-| **Conversation** | <!-- message history / summary / none --> | <!-- if chat-style --> |
+| Within a run | LangGraph `AgentState` (in-memory dict) | All pipeline data for one query |
+| Across queries in a session | SQLite `runs` table + filesystem CSV files | Past answers, uploaded files (by session_id) |
+| Conversation history | Not maintained — each query is stateless | The LLM has no memory of prior questions |
 
-**Context window management:** <!-- How is the prompt kept within limits? (summary, sliding window, RAG retrieval) -->
+**Context window management:** Only schema + `.describe()` + `head(5)` are sent to Gemini. For wide CSVs (many columns), `describe()` is limited to the first 50 columns if needed. No sliding window or summarisation is required in Phase 1–3 — the schema context for one typical CSV is well within Gemini Flash's context window.
 
 ---
 
 ## Human-in-the-Loop Checkpoints
 
-<!-- FILL IN: Where does execution pause for human input? Delete section if not applicable. -->
-
-| Checkpoint | What is shown to the user | Expected user action | Timeout / default |
-|------------|--------------------------|----------------------|-------------------|
-| <!-- name --> | <!-- what the agent surfaces --> | <!-- approve / edit / abort --> | <!-- timeout action --> |
+Not applicable. All query execution is fully automated. The human testing gates are at phase boundaries, not within the agent graph.
 
 ---
 
 ## Error Handling & Recovery
 
-<!-- FILL IN: How the agent handles failures at each level. -->
+**Node-level:** `load_dataset` and `analyze_query` wrap their logic in `try/except Exception`; on any exception they set `state["error"] = str(exc)` and return. `extract_table` and `generate_chart` do NOT set `state["error"]` on parse failures — they degrade gracefully (set their output to `None`).
 
-**Node-level:** <!-- Each node catches its own exceptions; fatal errors set state["error"] and route to handle_error node. -->
+**Edge routing:** After `load_dataset` and `analyze_query`, a conditional edge function checks `state.get("error")`: if set, routes to `handle_error`; otherwise continues.
 
-**Graph-level (handle_error node):**
-- Reads: `state.error`, `state.run_id`
-- Updates DB: run status → "failed", `error_message`, `completed_at`
-- Logs error with `run_id` context
-- Terminates graph
+**Graph-level (`handle_error`):** Sets `status = "failed"`. Runner writes `RunRow.error_message = state["error"]` and `RunRow.status = "failed"` to the DB.
 
-**Resume / retry strategy:** <!-- Can a failed run be resumed from its last checkpoint? How? -->
+**API surface:** The runner returns a typed result; the `POST /sessions/{id}/queries` route checks for `status == "failed"` and returns HTTP 422 with `{error: state["error"]}` for the browser to display in the chat.
 
-**Partial failure:** <!-- If a non-critical step fails, does the agent degrade gracefully or abort? -->
+**Resume / retry strategy:** No resumption in Phase 1–3 (single-request lifecycle). A failed query can be retried by the user resubmitting the same question.
 
 ---
 
 ## Observability
 
-<!-- FILL IN: What is logged, traced, and measured? -->
-
 | Signal | What | Where |
 |--------|------|-------|
-| **Trace** | One trace per run, one span per node | <!-- OpenTelemetry / LangSmith / stdout --> |
-| **LLM calls** | Prompt tokens, completion tokens, latency, model | <!-- LangSmith / structured log --> |
-| **Tool calls** | Tool name, inputs, success/error, latency | Structured log |
-| **Run outcome** | Status, total duration, error if any | DB + structured log |
+| Run outcome | `status`, `error_message` | SQLite `runs` table |
+| Errors | `error` string with `run_id` | `print` / `logging.error` to stdout |
+| LLM call | No token-level tracing in Phase 1 | Gemini SDK response object logged on error only |
 
 ---
 
 ## Concurrency Model
 
-<!-- FILL IN: How concurrent agent runs are handled. -->
-
-- **Run isolation:** <!-- one-at-a-time (API returns 409) / queue / parallel with run_id scoping -->
-- **Parallel nodes within a run:** <!-- which nodes run in parallel and why -->
-- **Checkpointing:** <!-- none / SqliteSaver / PostgresSaver — required if human-in-the-loop or long-running -->
+- **Run isolation:** Each HTTP request creates a new `AgentState` and calls `agentic_ai.invoke(state)` synchronously. FastAPI runs with a thread pool (default Uvicorn workers); each request is independent by `run_id` and `session_id`.
+- **Parallel nodes within a run:** None — the graph is a linear chain with one conditional branch.
+- **Checkpointing:** None (no `SqliteSaver`). Runs are single-request, short-lived; no resume needed.
 
 ---
 
-## Graph Assembly (`agent/graph.py`)
-
-<!-- FILL IN: Pseudocode showing how nodes and edges are wired. Must be ≤ 60 lines in the real file. -->
+## Graph Assembly (`src/graph/agent.py`)
 
 ```python
-graph = StateGraph(AgentState)
+from langgraph.graph import StateGraph, END
+from graph.state import AgentState
+from graph.nodes import load_dataset, analyze_query, extract_table, finalize, handle_error
+from graph.edges import after_load, after_analyze
 
-graph.add_node("node_a", node_a)
-graph.add_node("node_b", node_b)
-graph.add_node("finalize", node_finalize)
-graph.add_node("handle_error", node_handle_error)
+def _build_graph() -> StateGraph:
+    g = StateGraph(AgentState)
 
-graph.set_entry_point("node_a")
+    g.add_node("load_dataset", load_dataset)
+    g.add_node("analyze_query", analyze_query)
+    g.add_node("extract_table", extract_table)
+    g.add_node("finalize", finalize)
+    g.add_node("handle_error", handle_error)
 
-graph.add_conditional_edges(
-    "node_a",
-    lambda s: "handle_error" if s.get("error") else "node_b",
-)
+    g.set_entry_point("load_dataset")
 
-graph.add_edge("node_b", "finalize")
-graph.add_edge("finalize", END)
-graph.add_edge("handle_error", END)
+    g.add_conditional_edges(
+        "load_dataset",
+        after_load,
+        {"analyze_query": "analyze_query", "handle_error": "handle_error"},
+    )
+    g.add_conditional_edges(
+        "analyze_query",
+        after_analyze,
+        {"extract_table": "extract_table", "handle_error": "handle_error"},
+    )
+    g.add_edge("extract_table", "finalize")
+    g.add_edge("finalize", END)
+    g.add_edge("handle_error", END)
 
-compiled_graph = graph.compile()
+    return g.compile()
+
+agentic_ai = _build_graph()
 ```
+
+**Phase 2 extension:** Insert `generate_chart` between `extract_table` and `finalize`. Change `g.add_edge("extract_table", "finalize")` to `g.add_edge("extract_table", "generate_chart")` + `g.add_edge("generate_chart", "finalize")`. Add `generate_chart` node import.
