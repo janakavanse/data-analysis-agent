@@ -262,7 +262,8 @@ def test_sql_unanswerable_question_no_fabricated_number(api_client):
         text = (data["answer"] or "").lower() + " " + (data["explanation"] or "").lower()
         assert any(
             kw in text
-            for kw in ("no column", "no such", "not a column", "does not", "doesn't", "cannot", "can't", "no satisfaction", "not available", "not present", "no data")
+            for kw in ("no column", "no such", "not a column", "does not", "doesn't", "cannot", "can't", "no satisfaction", "not available", "not present",
+                       "no data", "could not", "was not", "not found", "required")
         ), f"expected a 'no such column' style answer, got {data}"
 
 

@@ -29,6 +29,7 @@ export default function Home() {
   const [fileName, setFileName] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [question, setQuestion] = useState('')
+  const [mode, setMode] = useState<'pandas' | 'sql'>('pandas')
 
   const [result, setResult] = useState<RunData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -73,7 +74,7 @@ export default function Home() {
       const res = await fetch('/runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csv_text: csvText, question: question.trim() }),
+        body: JSON.stringify({ csv_text: csvText, question: question.trim(), mode }),
       })
       const body = await res.json()
       if (!res.ok) {
@@ -136,10 +137,43 @@ export default function Home() {
           )}
         </div>
 
+        {/* Analysis mode toggle */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-800">
+            2. Analysis mode
+          </label>
+          <div className="flex gap-4">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="mode"
+                value="pandas"
+                checked={mode === 'pandas'}
+                onChange={e => setMode(e.target.value as 'pandas' | 'sql')}
+                disabled={loading}
+                className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+              />
+              <span className="text-sm text-gray-700">Pandas</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="mode"
+                value="sql"
+                checked={mode === 'sql'}
+                onChange={e => setMode(e.target.value as 'pandas' | 'sql')}
+                disabled={loading}
+                className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+              />
+              <span className="text-sm text-gray-700">SQL</span>
+            </label>
+          </div>
+        </div>
+
         {/* Question input */}
         <div className="space-y-2">
           <label htmlFor="question" className="block text-sm font-medium text-gray-800">
-            2. Ask a question
+            3. Ask a question
           </label>
           <textarea
             id="question"
