@@ -53,7 +53,7 @@ Complete all steps in order before writing any code:
   - If incomplete: tell the user to run `/zero-shot-build`; do not write application code
 - [ ] If spec is complete: read the full spec manifest in `CLAUDE.md`
 - [ ] Run `git status` — working tree must be clean before starting
-- [ ] **Create and switch to a feature branch**: `git checkout -b feature/<slug>-v0.1` — **never build on `main`**
+- [ ] **Branch from the current HEAD** (confirm with `git rev-parse --abbrev-ref HEAD`), then `git checkout -b feature/<slug>-v0.1` — branch from wherever HEAD is so the build dogfoods THIS harness version; **never `git checkout main` first, never build on `main`** (see `harness/rules/git.md`)
 - [ ] **Create the project directory** `<agent-slug>/` if it doesn't exist — never write agent code into the boilerplate root
 - [ ] Confirm `.env` exists and contains the required API keys/secrets (requested at intake) — tests and the build run against the real LLM/API using these keys
 - [ ] Confirm which phase you are implementing (see `harness/patterns/phases.md`)
