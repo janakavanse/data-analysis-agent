@@ -26,6 +26,7 @@ The spec-writer carves the phases from the requirements. Two roles are fixed; ev
 Phase 1 is always the first phase, and it is always the **smallest first-time-right win**:
 
 - One core path works end-to-end against the real LLM/API (keys from `.env`): the minimal domain types, data layer, and core logic that path needs — nothing more.
+- **Already valuable, not hollow.** The win includes the user's primary input path (e.g. using *their own* data, not only seeded/canned data) so it delights on the first test — never a mechanism demo that withholds the actual job. If a hard constraint from intake can only be exercised by a later slice, that slice belongs in Phase 1.
 - Backend is minimal but REAL on that path — no fake data on what the user tests.
 - Frontend (built in parallel) is visually complete: real UI for the one working path, PLUS clearly-labelled non-functional stubs for everything coming later. A stub must be visibly labelled so it is never mistaken for a bug.
 - **Gate (all must pass):**
