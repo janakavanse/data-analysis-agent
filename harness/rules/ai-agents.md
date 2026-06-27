@@ -26,9 +26,9 @@ These rules are never optional, never skipped, and must survive context compress
 
 8. **Every commit must be pushed immediately.** `git commit -m "..." && git push origin <branch>` is one indivisible action — a commit that isn't pushed doesn't exist. See `harness/rules/git.md`.
 
-9. **`main` is boilerplate-only. Never commit application code to `main`.** App code lives on a feature branch and reaches `main` only via a reviewed PR. See `harness/rules/git.md`.
+9. **`main` is boilerplate-only. Never commit application code to `main`.** App code lives on a feature branch cut from the current HEAD and is PR'd back into that branch — it never reaches `main` (only harness/boilerplate does, via a reviewed PR). See `harness/rules/git.md`.
 
-10. **A PR must exist before the first feature-branch commit.** Open it right after the first push (`gh pr create --base main --head feature/<slug>-v0.1`); every later push updates it. See `harness/rules/git.md`.
+10. **A PR must exist before the first feature-branch commit.** Open it right after the first push, **based on the branch you cut from, not `main`** (`gh pr create --base "$base" --head feature/<slug>-v0.1`, where `$base` is the HEAD captured before `checkout -b`); every later push updates it. See `harness/rules/git.md`.
 
 ---
 
