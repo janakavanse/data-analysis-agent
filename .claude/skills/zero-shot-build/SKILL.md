@@ -20,10 +20,11 @@ Intake runs in **two rounds**. Round 1 clarifies what the user wants. Round 2 co
 
 1. Acknowledge the idea in one sentence.
 2. Load the question tool: `ToolSearch` with query `select:AskUserQuestion`.
-3. Ask **Round 1** via `AskUserQuestion` — product-focused, 3–4 questions:
-   - **MVP scope** — what's the minimum that makes this useful? Push for the smallest first win.
-   - **Core behaviour** — what does a successful interaction look like? What does the user do and what does the agent return?
-   - **Key constraints** *(multiSelect: true)* — hard no's, compliance, systems to integrate, non-negotiable behaviours.
+3. Ask **exactly 4 questions** via `AskUserQuestion`, all multi-choice (users can always type "Other" for free text). These are product questions — no stack, no provider, no implementation detail:
+   - **Core capability** *(single-select, 4 options)* — what does the agent primarily do? Tailor options to the idea, covering the most likely interpretations. Examples: "Answer questions about data I upload", "Generate or transform content", "Automate a multi-step workflow", "Search and retrieve information".
+   - **Primary output** *(single-select, 4 options)* — what does it hand back to the user? Examples: "Text answers or summaries", "Charts or structured reports", "Files or documents", "Actions taken / notifications sent".
+   - **Who uses it and how** *(single-select, 4 options)* — usage pattern. Examples: "Just me, from a browser", "A small team, on demand", "End-users / customers", "An automated pipeline, no human in the loop".
+   - **Hard constraints** *(multiSelect: true, 4 options)* — non-negotiable limits. Always offer: "Data must stay local / no cloud uploads", "Must integrate with a specific external system", "Minimise paid API calls / cost-sensitive", "No hard constraints".
 
 ### Round 2 — What do we need to build it?
 
