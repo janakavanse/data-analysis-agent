@@ -13,11 +13,11 @@ A capability is a single, discrete action or behavior the agent performs. Exampl
 
 ## Capabilities in This Project
 
-<!-- FILL IN: List capabilities here as they are defined. Each entry links to its spec file (no number prefix). -->
-
 | Capability | File |
 |-----------|------|
-| <!-- name --> | [name.md](name.md) |
+| NL → SQL Analysis (ask in English, get SQL + table + chart) | [nl_to_sql_analysis.md](nl_to_sql_analysis.md) |
+
+> v1 is deliberately a single core capability. CSV upload (Phase 2) and multi-dataset management (Phase 3) extend this same capability's data sources rather than adding new capability files; promote them to their own capability files only if their behaviour diverges.
 
 ## How to Add a New Capability
 
