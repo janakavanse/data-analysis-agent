@@ -1,88 +1,84 @@
 # Implementation Phases
 
-Agents are built incrementally. This file defines the default phase model. The spec-writer sub-agent adapts it to your specific project.
+Agents are built phase by phase, derived from the user's requirements — not a fixed ladder. **Phase 1 ships with enough scope to genuinely delight.** Phases 2–3 complete the user's requirements. Then the agentic stack is upgraded and finalised. Production concerns trail behind the requirements.
 
 ## Core Principle
 
-**Ship the smallest user-testable win first. Then expand.**
+**Delight first, then complete, then polish.**
 
-Phase 1 is a thin but REAL vertical slice the user can test the first time, with zero rough edges on the tested path — never a models-only layer the user cannot exercise. Backend on the one core path is minimal but real (no fake data on the tested path); the frontend, built in parallel, is visually complete: real UI for the working path PLUS clearly-labelled non-functional stubs for everything coming later, so the user sees the vision. Each subsequent phase wires a stub into real functionality — one user-testable increment at a time.
+Phase 1 is NOT a thin one-path demo. It covers the user's primary requirements with enough depth that the person who briefed the idea is genuinely impressed when they test it. Phases 2–3 fill in the remaining requirements. Phases 4–5 are always the agentic upgrade and complete system. Production concerns (observability, API surface, polish) trail as optional phases only when the spec calls for them.
 
-## Default Phase Model
+The spec-writer derives the phase breakdown from `spec/roadmap.md` — the count and names come from the requirements, not a fixed ladder.
 
-The spec-writer sub-agent will customize this for your project, but the general structure is:
+## Phase Structure
 
-### Phase 1 — Smallest User-Testable Win (thin real vertical slice)
-- One core path works end-to-end against the real LLM/API (keys from `.env`): the minimal domain types, data layer, and core logic that path needs — nothing more.
-- **Agentic stack is wired from day one.** The graph framework (LangGraph or equivalent), state type, core nodes, and assembly are set up in Phase 1 — even if the capability logic is minimal. A stub node is clearly labelled; the framework itself is real and callable. Never defer the agentic skeleton to a later phase.
-- Backend is minimal but REAL on that path — no fake data on what the user tests.
-- Frontend (built in parallel) is visually complete: real UI for the one working path, PLUS clearly-labelled non-functional stubs for everything coming later. A stub must be visibly labelled so it is never mistaken for a bug.
+Four roles are always present; the middle phases are derived from requirements:
+
+---
+
+### Phase 1 — First Delight
+
+Phase 1 covers the user's **primary requirements** with enough depth to impress — not a single thin mechanism, but a working version of the main user journey the user can immediately appreciate.
+
+- **More scope than a thin slice.** If the user asked for analysis + answers + charts, Phase 1 covers the core of all three. Secondary requirements and production polish can be deferred — primary ones cannot.
+- **Agentic stack is wired from day one.** The graph framework (LangGraph or equivalent), state type, core nodes, and assembly are set up in Phase 1 even if some capability nodes are stubs. Never defer the agentic skeleton.
+- Frontend is visually complete: real UI for everything Phase 1 delivers, PLUS clearly-labelled stubs for what's coming. Stubs are never mistaken for bugs.
+- All calls on the tested path hit the real LLM/API (keys from `.env`) — no fake data on what the user tests.
 - **Gate (all must pass):**
   1. `pyproject.toml` declares the DB driver in `[project.dependencies]` (e.g. `psycopg2-binary` for PostgreSQL) — never dev-only
-  2. `uv run alembic upgrade head` succeeds against the configured database — this must be run and confirmed, not assumed
-  3. The core path runs end-to-end against the real LLM/API; tests for the slice pass
-  4. **Agentic stack gate:** graph compiles, state flows through nodes, agent is invocable — confirmed by the Phase 1 test, not assumed
-  5. **README updated** for every new setup step, command, env var, or endpoint this phase introduced — and every README command re-run from the stated directory
-  6. Working tree is clean and committed
-  7. Phase test-handoff published; the human has tested the slice and approved (see Human Testing Gate)
+  2. `uv run alembic upgrade head` succeeds against the configured database — run and confirmed, not assumed
+  3. Primary user journey works end-to-end against the real LLM/API; tests pass
+  4. **Agentic stack gate:** graph compiles, state flows through nodes, agent is invocable — confirmed by the Phase 1 test
+  5. Working tree is clean and committed
+  6. Phase test-handoff published; the human has tested and approved (see Human Testing Gate)
 
-### Phase 2 — Core Agent Loop (Real Integration)
-- Implement the agent's main loop from start to finish.
-- All external calls hit the real provider (LLM/API/search) using keys loaded from `.env`.
-- The agent runs end-to-end against the real LLM; tests assert on real responses (shape/content), not hardcoded strings.
-- A stub provider MAY remain as an optional fallback for offline development, but it is not required and tests are NOT expected to pass with keys unset.
+---
+
+### Phases 2–N — Requirements Phases *(spec-writer derives these)*
+
+Each phase covers a chunk of remaining user requirements from `spec/roadmap.md`. The spec-writer **names these phases after what they deliver**, not after generic production concerns. Aim for all user requirements covered by phase 3–4.
+
+- Each phase wires Phase-1 stubs into real functionality — one user-testable increment at a time.
+- All external calls hit the real provider using keys from `.env`; tests assert on real responses (shape/content), not hardcoded strings.
+- **Gate:** The phase's user-testable increment works end-to-end against the real LLM/API; tests pass; working tree clean; human approved.
+
+---
+
+### Phase N+1 — Agentic Stack Upgrade + Resilience
+
+After user requirements are covered, upgrade the agentic architecture and harden external calls.
+
+- **Upgrade the agentic stack** per `spec/agent.md`: wire in the patterns it calls for beyond the base ReAct loop — planning, reflection, multi-agent coordination, memory, or whatever the spec requires. Phase 1 laid the skeleton; this phase promotes it to the production-grade architecture.
+- Add error handling to all external calls: try/except, retries, timeouts. Agent continues (degraded, not crashed) on non-critical failures.
 - **Gate (all must pass):**
-  1. Agent runs end-to-end; at least one record written to DB; run status "completed"
-  2. `pytest` passes against the **production DB driver** (e.g. PostgreSQL via psycopg2, not SQLite) **with** real LLM/API keys loaded from `.env`
-  3. Tests are fully automated: `conftest.py` creates and tears down the test schema; no manual DB setup steps
-  4. Real LLM/API keys are present in `.env` and the suite exercises the real provider — no all-stubbed run is accepted as the Phase 2 gate
-  5. **Golden-path UI smoke test passes** (if the project has any UI or HTTP surface). Drives the full primary user flow through `TestClient` against the real LLM/API and asserts real response content (not only status codes). Edge-case and end-to-end UI assertions are required, not optional.
-  6. **Live-server smoke:** the agent starts the app (`uv run python -m <pkg>`) and hits `/health` plus one real page with `curl`, exercising the live LLM/API path. Both return 200 and the page shows real AI output.
-  7. **README updated** for every new command, endpoint, or capability this phase introduced
+  1. Every pattern listed in `spec/agent.md` beyond the base loop is wired and exercised by a real test
+  2. Agent handles all documented failure modes without crashing
 
-### Phase 3 — Remaining Integrations
-- Wire up any secondary providers or data sources not covered by the Phase 2 core loop.
-- **Gate:** Each integration runs for real; happy path works end-to-end with real data. README updated for each new integration.
+---
 
-### Phase 4 — Error Handling + Resilience + Agentic Stack Upgrade
-- Add try/catch, retries, timeouts to all external calls; agent continues (degraded, not crashed) on non-critical failures.
-- **Upgrade the agentic stack** per the spec: wire in the patterns `spec/agent.md` calls for beyond the base ReAct loop — planning, reflection, multi-agent coordination, memory, or whatever the spec requires. Phase 1 laid the skeleton; Phase 4 promotes it to the production-grade architecture.
+### Phase N+2 — Complete Agentic System
+
+All spec-required agent patterns are active and the system runs fully end-to-end.
+
+- Every capability in `spec/roadmap.md` is real — no stubs on any active path.
+- Complete any remaining integrations; system runs against all real services.
 - **Gate (all must pass):**
-  1. Agent handles all documented failure modes without crashing
-  2. Agentic stack upgraded: every pattern listed in `spec/agent.md` beyond the base loop is wired and exercised by a real test
-  3. README updated for any new agentic capabilities or failure-handling behaviour introduced
-
-### Phase 5 — Complete Agentic System
-- All spec-required agent patterns are active and the system runs fully end-to-end.
-- Complete any remaining secondary integrations. Every capability in `spec/roadmap.md` is real — no stubs on any active path.
-- **Gate (all must pass):**
-  1. All integrations are real; agent runs fully end-to-end
-  2. Every capability in the spec is implemented and tested with real data and real LLM/API
+  1. All integrations are real; agent runs fully end-to-end against the real LLM/API
+  2. Every capability in the spec is implemented and tested with real data
   3. `spec/agent.md` graph matches the running code — drift audit passes on the agentic surfaces
-  4. README reviewed and accurate for the complete system
 
-### Phase 6 — API / CLI Surface
-- Add the external API or CLI (if the spec calls for it)
-- **Gate:** All specified endpoints/commands work correctly; README updated for every new command or route
+---
 
-### Phase 7 — Basic UI (if required)
-- Implement the UI from `spec/ui.md`
-- Functional but not polished
-- **Gate:** All specified screens/views are present and functional; README updated for any new UI setup or access instructions
+### Trailing Phases *(only if the spec requires them)*
 
-### Phase 8 — Integration Tests
-- Write integration tests that exercise the full system against real services, including edge cases, error paths, and any UI journey.
-- **Gate:** Integration, edge-case, end-to-end, and UI tests pass reliably against the real LLM/API
+These phases exist only when the spec explicitly calls for them — never as defaults:
 
-### Phase 9 — Observability + Logging
-- Add structured logging, metrics, and monitoring
-- **Gate:** Every major operation produces a log entry; errors are surfaced; README updated with any new observability commands or dashboards
+- **API / CLI Surface** — only if `spec/api.md` calls for an external API or CLI
+- **UI Polish** — only if `spec/ui.md` calls for further UI work beyond Phase 1
+- **Observability + Logging** — if the spec calls for structured logging or metrics beyond basic operation
+- **Polish + Hand-off** — final drift audit; README verified end-to-end from a clean clone; user accepts hand-off
 
-### Phase 10 — Polish + Hand-off
-- Fix rough edges, improve error messages, update docs
-- Final drift audit: code matches spec
-- README fully rewritten to reflect the complete shipped system — accurate from a clean clone
-- **Gate:** Drift audit passes; README verified end-to-end from a clean state; user accepts hand-off
+---
 
 ## Human Testing Gate
 
@@ -97,7 +93,7 @@ After a phase passes its automated gate and is committed, the build publishes a 
 ## Parallel Slices Within a Phase
 
 - spec-writer carves each phase into INDEPENDENT SLICES (the parallel units) with explicit dependencies; default to independence so slices build concurrently.
-- agent-builder fans out a generator per slice — multiple code-generator AND code-generator invocations in a SINGLE message so they run concurrently (disjoint paths: frontend writes the frontend surface, backend writes `src/` — never the same file). Then fans out qa-auditor per slice concurrently and aggregates verdicts.
+- agent-builder fans out a generator per slice — multiple code-generator invocations in a SINGLE message so they run concurrently (disjoint paths: frontend writes the frontend surface, backend writes `src/` — never the same file). Then fans out qa-auditor per slice concurrently and aggregates verdicts.
 - Serialize ONLY across a true declared dependency. On a BLOCKED slice, loop only that slice's generator; other slices are unaffected. For headless/CLI builds, only backend generators run.
 
 ## Phase Gates
@@ -123,29 +119,33 @@ The current phase is recorded in git commit messages (`phase-N: [description]`).
 
 ## Adapting the Phases
 
-The spec-writer sub-agent may merge, split, or reorder phases based on your project's specifics. For example:
-- A pure CLI tool may skip phases 6 and 7
-- A project with no database may shrink phase 1
-- A project with many integrations may split phase 5 into multiple phases
+The spec-writer derives the phases from `spec/roadmap.md`. What is fixed:
 
-Whatever the spec-writer decides, the core principle holds: **smallest user-testable win first**.
+- **Phase 1 is always First Delight** — never a thin one-path demo; covers the user's primary requirements
+- **The agentic stack is always wired in Phase 1** — graph, state, nodes, assembly; never deferred
+- **There is always an Agentic Stack Upgrade phase** and a **Complete Agentic System phase** — in that order, after the requirements phases
+- **Trailing phases are only added when the spec explicitly requires them**
+
+What varies (derived from requirements):
+- How many requirements phases (2–N) — count comes from `spec/roadmap.md`
+- Names of requirements phases — named after what they deliver (e.g. "Upload + Analysis", "Chat Interface", "Report Export"), not generic concerns
 
 ---
 
 ## Language-Specific Gate Commands
 
-The gate test command depends on the project language. The spec-writer sets the exact command per phase in `spec/roadmap.md` (## Phases of Development), honoring the test rules in `harness/patterns/tech-stack.md`.
+The spec-writer sets the exact gate command per phase in `spec/roadmap.md` (## Phases of Development), honoring the test rules in `harness/patterns/tech-stack.md`.
 
-| Language | Phase 1 gate | Phase 2 gate |
+| Language | Phase 1 gate | Phase 2+ gate |
 |----------|-------------|-------------|
 | Python | `uv run alembic upgrade head` + `uv run pytest` | `uv run pytest` (PostgreSQL, automated via conftest) |
 | TypeScript (Bun) | migration tool + `bun test tests/unit/` | `bun test tests/integration/` |
 | TypeScript (Node) | migration tool + `npx vitest run tests/unit/` | `npx vitest run tests/integration/` |
 | Go | `migrate up` + `go test ./internal/...` | `go test ./...` |
 
-The Phase 2 gate runs with **real LLM/API keys loaded from `.env`** regardless of language; both the DB URL and the provider key(s) must be set.
+Phase 2+ gates run with **real LLM/API keys loaded from `.env`** regardless of language; both the DB URL and the provider key(s) must be set.
 
-## TypeScript/Bun Phase 2 Test Pattern
+## TypeScript/Bun Integration Test Pattern
 
 ```typescript
 // tests/integration/pipeline.test.ts
