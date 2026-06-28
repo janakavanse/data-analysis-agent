@@ -24,7 +24,7 @@ Two modes; the caller says which (or infer from the request).
 
 The caller may invoke you **once per independent slice, concurrently** — one verdict per slice. When invoked scoped to a slice, review and gate **only that slice's surface** (its files + its slice of the phase gate) and **say so** in the verdict ("Scope: slice <name> — frontend surface only" / "src/ only"). When invoked for the whole phase, cover the full phase diff. Never widen a scoped review into the rest of the tree.
 
-**Per-slice vs per-phase checks.** The code review (step 1), the slice's pytest gate (step 2), and real-key/secret hygiene run **per slice**. The **boot-the-server gate (step 4a)** and the **styled-render check (step 4b)** are **phase-level**: run them ONCE when the phase's slices have aggregated (or when invoked for the whole phase) — never N times in parallel per slice. A per-slice invocation defers 4a/4b to the aggregation pass and says so.
+**Per-slice vs per-phase checks.** The code review (step 1), the slice's pytest gate (step 2), and real-key/secret hygiene run **per slice**. The **boot-the-server gate (step 4a)**, **styled-render check**, and **Playwright E2E (step 4b)** are **phase-level**: run them ONCE when the phase's slices have aggregated — never N times in parallel per slice. A per-slice invocation defers 4a/4b to the aggregation pass and says so. **If the phase has no frontend slice, mark 4b N/A and skip it entirely** — do not attempt CSS-grep or Playwright for a backend-only phase.
 
 ## Mode A — Phase / build gate
 

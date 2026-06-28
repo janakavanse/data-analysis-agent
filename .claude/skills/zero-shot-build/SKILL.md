@@ -137,9 +137,13 @@ Phase 1 is the smallest working win: real on the one core path, with clearly-lab
 1. **The server is already running** — agent-builder launched and verified it (200 + styled) before returning the handoff. Nothing to start.
 2. Load the question tool: `ToolSearch` with query `select:AskUserQuestion` (before asking).
 3. Present the handoff as **phase release notes**: the live URL, what was built this phase, what to click / type / look at, the expected result, which parts are clearly-labelled stubs vs real (a stub must never read as a bug), and what the next phase adds. No run commands in the handoff — the app is already serving.
-4. Ask via `AskUserQuestion`: **"Does Phase 1 work as you expected?"** → options **"Yes — continue to Phase 2"** / **"I hit an issue"**.
-5. **On "I hit an issue":** capture what the user saw, then invoke **qa-auditor** to diagnose and CLASSIFY the root cause (SPEC vs CODE, and which surface). Route the fix: SPEC → spec-writer rewrites the spec, then the responsible generator(s) redo the code; CODE → the responsible **code-generator** fixes the surface. Re-gate with qa-auditor, commit + push the fix yourself, then re-invoke **agent-builder** which relaunches the server and returns a fresh handoff. Re-present the gate (release notes, live link). Loop until the user is satisfied.
-6. **On "Yes":** proceed to Stage 4.
+4. **Step 1 of the gate — confirm the app is live and get real feedback.** Ask via `AskUserQuestion` (two questions in the same call):
+   - *"Is the app loading for you at [URL]?"* → **"Yes, I can see it"** / **"No — I'm getting an error or blank page"**
+   - *"After trying it out — what's your verdict?"* (multiSelect) → **"It works well"** / **"The output isn't quite right"** / **"The UI feels off"** / **"I'd like to change the direction"** / **"Something is broken"**
+5. **Step 2 of the gate — decide what's next.** Based on their answers:
+   - If the app didn't load → treat as a hard issue: route immediately to qa-auditor (boot gate failure), fix, relaunch, re-present.
+   - If they selected any negative verdict → ask a follow-up: **"Tell me what you saw"** (free text via the Other option or a direct ask in plain text). Capture the description, invoke **qa-auditor** to diagnose and CLASSIFY root cause (SPEC vs CODE). Route the fix: SPEC → spec-writer rewrites, responsible generators redo; CODE → responsible **code-generator** fixes. Re-gate with qa-auditor, commit + push, re-invoke **agent-builder** (relaunches server, returns fresh handoff). Re-present the full gate. Loop until they're satisfied.
+   - If they selected only **"It works well"** (or equivalent positive) → ask: **"Ready to continue to Phase 2?"** → **"Yes, let's go"** / **"One more thing first"**. On "One more thing first": capture and route as above. On "Yes": proceed to Stage 4.
 
 ## Stage 4 — Per remaining phase (build → gate, repeat)
 
