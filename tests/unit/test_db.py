@@ -1,53 +1,60 @@
 """DB layer tests — no LLM key required."""
 from sqlalchemy.orm import Session
-from db.models import RunRow
-import db.session as session_module
+from db.models import Dataset
 
 
-def test_run_row_roundtrip(_isolated_db):
+def _make_dataset(**kwargs) -> Dataset:
+    defaults = dict(
+        name="sales.csv",
+        kind="csv",
+        storage_path="/data/sales.csv",
+        size_bytes=1024,
+    )
+    defaults.update(kwargs)
+    return Dataset(**defaults)
+
+
+def test_dataset_roundtrip(_isolated_db):
     with Session(_isolated_db) as s:
-        run = RunRow(input_text="hello world")
-        s.add(run)
+        ds = _make_dataset(name="hello world")
+        s.add(ds)
         s.commit()
-        run_id = run.id
+        ds_id = ds.id
 
     with Session(_isolated_db) as s:
-        fetched = s.get(RunRow, run_id)
+        fetched = s.get(Dataset, ds_id)
         assert fetched is not None
-        assert fetched.input_text == "hello world"
-        assert fetched.status == "pending"
-        assert fetched.output_text is None
+        assert fetched.name == "hello world"
+        assert fetched.kind == "csv"
+        assert fetched.size_bytes == 1024
+        assert fetched.row_count is None
+        assert fetched.created_at is not None
 
 
-def test_run_row_status_update(_isolated_db):
+def test_dataset_update(_isolated_db):
     with Session(_isolated_db) as s:
-        run = RunRow(input_text="test")
-        s.add(run)
+        ds = _make_dataset()
+        s.add(ds)
         s.commit()
-        run_id = run.id
+        ds_id = ds.id
 
     with Session(_isolated_db) as s:
-        run = s.get(RunRow, run_id)
-        run.status = "completed"
-        run.output_text = "some output"
+        ds = s.get(Dataset, ds_id)
+        ds.row_count = 500
         s.commit()
 
     with Session(_isolated_db) as s:
-        run = s.get(RunRow, run_id)
-        assert run.status == "completed"
-        assert run.output_text == "some output"
+        ds = s.get(Dataset, ds_id)
+        assert ds.row_count == 500
 
 
-def test_multiple_runs_independent(_isolated_db):
-    ids = []
+def test_multiple_datasets_independent(_isolated_db):
     with Session(_isolated_db) as s:
         for i in range(3):
-            run = RunRow(input_text=f"input {i}")
-            s.add(run)
+            s.add(_make_dataset(name=f"file {i}"))
         s.commit()
-        # fetch all
-        runs = s.query(RunRow).all()
-        ids = [r.id for r in runs]
+        rows = s.query(Dataset).all()
+        ids = [r.id for r in rows]
 
     assert len(ids) == 3
     assert len(set(ids)) == 3  # all unique

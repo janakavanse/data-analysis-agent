@@ -1,3 +1,3 @@
-from domain.run import RunRequest, RunResponse
+from domain.query import QueryRequest
 
-__all__ = ["RunRequest", "RunResponse"]
+__all__ = ["QueryRequest"]
