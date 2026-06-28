@@ -2,9 +2,35 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Float, Index, Integer, JSON, Text, TIMESTAMP, func, text, type_coerce
+from sqlalchemy import Float, Index, Integer, Text, TIMESTAMP, func, text
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql.expression import FunctionElement
+
+
+class _KindFromJson(FunctionElement):
+    """Dialect-aware extraction of the 'kind' key from a JSON text column.
+
+    Generates ``json_extract(col, '$.kind')`` on SQLite and
+    ``CAST(col AS jsonb) ->> 'kind'`` on PostgreSQL so that the
+    McpResourceRow.kind hybrid expression works as a SQL filter on both.
+    """
+
+    name = "_kind_from_json"
+    inherit_cache = True
+
+
+@compiles(_KindFromJson, "sqlite")
+def _kind_from_json_sqlite(element, compiler, **kw):
+    (col,) = element.clauses
+    return f"json_extract({compiler.process(col, **kw)}, '$.kind')"
+
+
+@compiles(_KindFromJson, "postgresql")
+def _kind_from_json_pg(element, compiler, **kw):
+    (col,) = element.clauses
+    return f"CAST({compiler.process(col, **kw)} AS jsonb) ->> 'kind'"
 
 
 def _uuid() -> str:
@@ -251,9 +277,10 @@ class McpResourceRow(_CapabilityMixin, Base):
     @kind.expression
     @classmethod
     def kind(cls):
-        # type_coerce (no SQL CAST emitted) lets SQLAlchemy use JSON subscript semantics:
-        # json_extract(col, '$.kind') on SQLite, col->>'kind' on PostgreSQL.
-        return func.coalesce(type_coerce(cls.content_json, JSON)["kind"].as_string(), "primary_entity")
+        # _KindFromJson compiles to the correct dialect-specific SQL:
+        # SQLite → json_extract(col, '$.kind')
+        # PostgreSQL → CAST(col AS jsonb) ->> 'kind'
+        return func.coalesce(_KindFromJson(cls.content_json), "primary_entity")
 
     @property
     def content(self):
