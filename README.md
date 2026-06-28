@@ -23,7 +23,7 @@ Six convictions the whole repo is built around:
 
 A starting point for building AI agents spec-first. The repo ships with:
 
-- A working **baseline agent** in `src/` (FastAPI + LangGraph + SQLite, provider-agnostic LLM — Anthropic or Gemini, `transform_text` as the capability slot) — tests pass out of the box
+- A working **data-analysis agent** in `src/` (FastAPI + LangGraph + SQLite, provider-agnostic LLM — Anthropic or Gemini, Gemini by default) — tests pass out of the box
 - A **spec template** in `spec/` covering roadmap, architecture, capabilities, data model, API, UI, and agent graph
 - Three **zero-shot skills** (`/zero-shot-build`, `/zero-shot-fix`, `/zero-shot-sync`)
 - A four-agent **team** — agent-builder orchestrates (plans, fans out, owns git/PR); spec-writer is the single design authority; code-generator implements one slice per instance (parallelised); qa-auditor reviews and gates
@@ -114,12 +114,16 @@ agent.py            ← verify setup (default); --run to start the server
 .env.example
 ```
 
-**Capability slot** — the three files to replace for your agent:
-- `src/graph/nodes.py` — replace `transform_text` with your logic
-- `src/prompts/transform.md` — replace with your system prompt
-- `frontend/src/app/page.tsx` — replace the transform form with your UI
+## This agent
 
-Everything else (graph wiring, API, DB, settings, tests) is already working.
+A **local-first conversational data-analysis agent for CSV files**. Upload a CSV, ask plain-English questions, and get answers that always **show the work** — the pandas code that ran plus the numbers it produced. The raw data never leaves your machine: the LLM only ever sees column names, a small sample of rows, and computed summaries.
+
+Built on FastAPI + LangGraph + SQLite + Next.js, using Gemini (`gemini-2.5-flash` by default). The Phase-1 API surface is:
+- `POST /datasets` — upload a CSV, load it locally, and open a session
+- `POST /sessions/{id}/ask` — run one analysis turn over the loaded data
+- `GET /sessions/{id}` — fetch the dataset header + the full ordered conversation
+
+Charts, one-shot reports, Excel support, and auto-insights are coming in later phases (currently shown as clearly-labelled stubs in the UI).
 
 ---
 
@@ -139,7 +143,7 @@ Once running:
 
 | URL | What |
 |-----|------|
-| `http://localhost:8001/app/` | **UI** — transform form (the capability slot) |
+| `http://localhost:8001/app/` | **UI** — data-analysis workspace: drag/drop a CSV, ask a question, see the answer with the pandas code + numbers |
 | `http://localhost:8001/health` | API health check |
 | `http://localhost:8001/docs` | Interactive API docs (Swagger) |
 
