@@ -1,77 +1,105 @@
 'use client'
 
 import { useState } from 'react'
+import { runAnalysis, ApiRequestError, type Dataset, type Analysis } from '@/lib/api'
+import { UploadZone } from '@/components/UploadZone'
+import { QuestionBox } from '@/components/QuestionBox'
+import { StagedProgress } from '@/components/StagedProgress'
+import { AnswerPanel } from '@/components/AnswerPanel'
+import { StubRail } from '@/components/StubRail'
 
 export default function Home() {
-  const [input, setInput] = useState('')
-  const [result, setResult] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [dataset, setDataset] = useState<Dataset | null>(null)
+  const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!input.trim()) return
+  async function handleAsk(question: string) {
+    if (!dataset) return
     setLoading(true)
     setError(null)
-    setResult(null)
+    setAnalysis(null)
     try {
-      const res = await fetch('/runs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input_text: input }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.detail?.message ?? `Request failed (${res.status})`)
-      } else if (data.data?.error) {
-        setError(data.data.error)
+      const result = await runAnalysis(dataset.dataset_id, question)
+      setAnalysis(result)
+    } catch (e) {
+      if (e instanceof ApiRequestError) {
+        setError(e.message)
       } else {
-        setResult(data.data.output_text)
+        setError('Could not reach the server — is it running?')
       }
-    } catch {
-      setError('Network error — is the server running?')
     } finally {
       setLoading(false)
     }
   }
 
+  function handleDatasetLoaded(ds: Dataset) {
+    setDataset(ds)
+    setAnalysis(null)
+    setError(null)
+  }
+
   return (
-    <main className="mx-auto max-w-2xl px-4 py-16">
-      <h1 className="mb-8 text-3xl font-bold tracking-tight">Agent</h1>
+    <main className="mx-auto max-w-6xl px-4 py-8">
+      <header className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+          Personal Data Analysis Agent
+        </h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Upload a spreadsheet and ask questions in plain language. Your full data stays on your
+          machine — only the schema and a small sample are shared with the model.
+        </p>
+      </header>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <textarea
-          className="w-full rounded-lg border border-gray-300 p-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          rows={4}
-          placeholder="Enter text to transform…"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          disabled={loading}
-        />
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? 'Running…' : 'Run'}
-        </button>
-      </form>
+      <div className="flex gap-6">
+        <StubRail />
 
-      {error && (
-        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
+        <div className="min-w-0 flex-1 space-y-5">
+          <UploadZone dataset={dataset} onLoaded={handleDatasetLoaded} />
+
+          <QuestionBox enabled={!!dataset} loading={loading} onAsk={handleAsk} />
+
+          {loading && <StagedProgress />}
+
+          {error && !loading && (
+            <div
+              data-testid="analysis-error"
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+            >
+              <p className="font-medium">The analysis couldn&apos;t be completed.</p>
+              <p className="mt-1 text-red-600">{error}</p>
+            </div>
+          )}
+
+          {analysis && !loading && <AnswerPanel analysis={analysis} />}
+
+          {!dataset && !loading && (
+            <div
+              data-testid="empty-no-dataset"
+              className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center"
+            >
+              <p className="text-base font-medium text-gray-700">Upload a dataset to begin</p>
+              <p className="mt-1 text-sm text-gray-400">
+                Drop a CSV or Excel file above, then ask a question about it.
+              </p>
+            </div>
+          )}
+
+          {dataset && !analysis && !loading && !error && (
+            <div
+              data-testid="empty-no-question"
+              className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center"
+            >
+              <p className="text-base font-medium text-gray-700">Ask your first question</p>
+              <p className="mt-1 text-sm text-gray-400">
+                Try &ldquo;What were total sales by month?&rdquo; or &ldquo;Which category sold the
+                most?&rdquo;
+              </p>
+            </div>
+          )}
         </div>
-      )}
-
-      {result && (
-        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4 text-sm whitespace-pre-wrap shadow-sm">
-          {result}
-        </div>
-      )}
-
-      {!result && !error && !loading && (
-        <p className="mt-10 text-center text-sm text-gray-400">Results will appear here.</p>
-      )}
+      </div>
     </main>
   )
 }

@@ -1,2 +1,52 @@
 @import "tailwindcss";
 @source "../";
+
+/* Markdown prose styling for LLM-generated answers (react-markdown output). */
+.prose-answer p {
+  margin-bottom: 0.75rem;
+}
+.prose-answer p:last-child {
+  margin-bottom: 0;
+}
+.prose-answer ul,
+.prose-answer ol {
+  margin: 0.5rem 0 0.75rem 1.25rem;
+  list-style: revert;
+}
+.prose-answer ul {
+  list-style-type: disc;
+}
+.prose-answer ol {
+  list-style-type: decimal;
+}
+.prose-answer li {
+  margin-bottom: 0.25rem;
+}
+.prose-answer strong {
+  font-weight: 600;
+}
+.prose-answer code {
+  background: #f3f4f6;
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.prose-answer h1,
+.prose-answer h2,
+.prose-answer h3 {
+  font-weight: 600;
+  margin: 0.75rem 0 0.5rem;
+}
+.prose-answer table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.9em;
+}
+.prose-answer th,
+.prose-answer td {
+  border: 1px solid #e5e7eb;
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
