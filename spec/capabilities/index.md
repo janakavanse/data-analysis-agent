@@ -1,38 +1,35 @@
 # Capabilities Index
 
-> **Boilerplate status:** The spec-writer sub-agent creates one file per capability in this directory. Each file describes exactly one discrete thing the agent can do.
+> One file per capability. Each describes exactly one discrete thing DataChat can do. The chosen stack/graph lives in [`architecture.md`](../architecture.md) and [`agent.md`](../agent.md), not here.
 
 ---
 
-## What Is a Capability?
+## Active Capabilities (v1 — Phase 1)
 
-A capability is a single, discrete action or behavior the agent performs. Examples:
-- "Search the web for companies matching criteria X"
-- "Draft a personalized email given a lead profile"
-- "Send a Slack notification when a threshold is crossed"
+These four are real and end-to-end on the Phase 1 tested path.
 
-## Capabilities in This Project
+| Capability | File | Delivered in |
+|-----------|------|--------------|
+| Profile Dataset | [profile_dataset.md](profile_dataset.md) | Phase 1 |
+| Analyze Question (plan → code → execute locally → answer) | [analyze_question.md](analyze_question.md) | Phase 1 |
+| Conversation Memory (per-dataset thread) | [conversation_memory.md](conversation_memory.md) | Phase 1 |
+| Run History (audit trail) | [run_history.md](run_history.md) | Phase 1 |
 
-<!-- FILL IN: List capabilities here as they are defined. Each entry links to its spec file (no number prefix). -->
+## Deferred Capabilities (later phases — shown in Phase 1 only as clearly-labelled NON-FUNCTIONAL stubs)
 
-| Capability | File |
-|-----------|------|
-| <!-- name --> | [name.md](name.md) |
+These are intentionally **not** in Phase 1. They appear in the UI as labelled stubs so the owner sees the vision; a stub must never read as a bug. Each maps to a later phase in [`roadmap.md`](../roadmap.md).
+
+| Deferred capability | Phase |
+|---------------------|-------|
+| Interactive charts / dashboards | Phase 2 — Charts & Richer Output |
+| Follow-up question suggestions (2–3 after each answer) | Phase 2 — Charts & Richer Output |
+| Persistent multi-dataset library (sidebar list across days) | Phase 3 — Dataset Library & Persistent Threads |
+| Save derived/cleaned datasets back to the library as new items | Phase 3 — Dataset Library & Persistent Threads |
+| Excel `.xlsx` + multi-sheet workbook support | Phase 4 — Excel & Multi-file Joins |
+| Multiple-file join / compare | Phase 4 — Excel & Multi-file Joins |
+| Running daily cost total | Phase 5 — Daily Cost Total & Confirm-Before-Heavy-Work |
+| Confirm-before-heavy/expensive-work clarification gate | Phase 5 — Daily Cost Total & Confirm-Before-Heavy-Work |
 
 ## How to Add a New Capability
 
-Run `/zero-shot-build [description]` on the existing spec. The spec-writer sub-agent will:
-1. Create a new file in this directory (`<name>.md`, no number prefix)
-2. Update this index
-3. Flag any dependencies on existing capabilities
-4. Self-review that it fits the architecture and data model before returning
-
-## Capability File Template
-
-Each capability file should answer:
-- **What it does** (one sentence)
-- **Inputs** (what data it receives)
-- **Outputs** (what it produces)
-- **External calls** (APIs, LLMs, databases it touches)
-- **Error cases** (what can go wrong and how it's handled)
-- **Success criteria** (how we test it)
+Run `/zero-shot-build [description]` on the existing spec. The spec-writer creates `<name>.md` here (no number prefix), updates this index, flags dependencies, and self-reviews fit against the architecture and data model.
