@@ -37,26 +37,21 @@ Done-when, by signal:
 
 Give the generator the precise target, the responsible files, and the spec sections defining correct behavior. It fixes toward spec intent and adds/updates a regression test (for an LLM/API bug, the regression test uses real keys from `.env`). It must not mute a test or delete an assertion to go green; if spec and test genuinely conflict, it stops and reports (likely a spec bug → re-run Step 1 as SPEC, or suggest `/zero-shot-sync`).
 
-## Step 3 — Verify (tiered by fix scope)
+## Step 3 — Verify (qa-auditor always; scope tiered by fix size)
 
-After the fix is applied, check the diff scope and pick a tier:
+**qa-auditor verifies every fix** — independence is the point: the agent that judges the fix is never the one that wrote it, so it catches weakened assertions, adjacent regressions, and logic/spec gaps the fixer would rubber-stamp. What changes by tier is the **scope of what qa-auditor runs**, not whether it runs.
 
-### Express path — use when ALL hold
+### Scoped gate (express) — use when ALL hold
 - Root cause is **CODE**, not SPEC
 - `git diff --name-only HEAD` shows **≤ 3 files changed**
 - No DB migration added (`migrations/` untouched)
 - No API contract changed (`spec/api.md` untouched)
 
-Run directly — **no qa-auditor agent:**
-1. **Targeted tests** — identify test files covering the changed source files and run only those: `uv run pytest <test-file(s)> -x --tb=short -q`. If unsure which tests apply, run the unit suite only (skip E2E): `uv run pytest tests/unit -x --tb=short -q`.
-2. **Frontend build** (only if any frontend file changed): `cd frontend && pnpm build && cd ..` — zero errors required.
-3. **Smoke call** — one real-LLM/API call exercising the exact behavior that was broken, using keys from `.env`.
+Invoke **qa-auditor in scoped gate mode**: tell it to verify only the changed surface — run the targeted tests covering the changed files + the new regression test + one real-key smoke call on the exact behavior that was broken (and a frontend `pnpm build` only if a frontend file changed). It does NOT run the full suite or full E2E. It still reviews the diff with fresh eyes — including whether the regression test asserts real values, not just presence/shape — and returns VERIFIED/BLOCKED. Typical cost: ~1–2 min vs. the full gate's 10+.
 
-All three pass → **VERIFIED** → go to Step 4. Any fail → fall back to Full gate.
+### Full gate — use when: SPEC root cause / migration added / API contract changed / > 3 files changed / scoped gate came back BLOCKED
 
-### Full gate — use when: SPEC root cause / migration added / API contract changed / > 3 files changed / express failed
-
-Invoke **qa-auditor** in gate mode (real-key tests from `.env`) against the Step 1 signal. Still BLOCKED → re-route per the verdict (re-invoke the responsible generator with the new detail); loop until VERIFIED. For a drift fix, also confirm qa-auditor (drift mode) reports CLEAN.
+Invoke **qa-auditor** in full gate mode (real-key tests from `.env`, full suite + E2E) against the Step 1 signal. Still BLOCKED → re-route per the verdict (re-invoke the responsible generator with the new detail); loop until VERIFIED. For a drift fix, also confirm qa-auditor (drift mode) reports CLEAN.
 
 ## Step 4 — Ship + report
 
