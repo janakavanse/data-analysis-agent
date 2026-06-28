@@ -19,6 +19,41 @@ Six convictions the whole repo is built around:
 
 ---
 
+## Running This Build — Data-Analysis Agent (Phase 1)
+
+This branch is a generated agent: upload a CSV, auto-profile it, and ask plain-language
+questions. A LangGraph loop generates pandas code, runs it **locally** over the full data,
+verifies, and returns prose + an interactive chart + the exact code — audited to SQLite.
+The LLM (Gemini) only ever sees schema, a bounded sample, and aggregates — never raw rows.
+
+**Prereqs:** `uv`, Node + `pnpm`, and `AGENT_GEMINI_API_KEY` set in `.env` (copy `.env.example`).
+
+```bash
+# from the repo root
+cd frontend && pnpm install && pnpm build      # build the static UI -> frontend/out/
+cd ..
+uv sync                                         # install Python deps
+uv run alembic upgrade head                     # create the SQLite schema
+uv run python -m src                            # serve on http://localhost:8001
+```
+
+Then open **http://localhost:8001/app/**, upload a CSV, and ask a question.
+
+**Tests (real Gemini via `.env`):**
+
+```bash
+# from the repo root
+uv run pytest                                                   # backend suite (35 tests)
+cd frontend && npx playwright install chromium                 # once
+npx playwright test tests/e2e/ --reporter=line                 # UI E2E (backend must be running)
+```
+
+Phase 1 is real on the upload -> profile -> ask -> answer path. Multi-file, persistent
+sessions, follow-up suggestions, annotations, a derived-dataset library, cost/token
+accounting, and Excel/SQL sources ship as clearly-labelled "Coming soon" stubs.
+
+---
+
 ## What This Is
 
 A starting point for building AI agents spec-first. The repo ships with:
