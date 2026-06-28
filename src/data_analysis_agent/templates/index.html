@@ -67,7 +67,21 @@
   /* ── Database tab ──────────────────────────────────────── */
   .db-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 14px 18px; }
   .db-body { display: flex; gap: 16px; align-items: flex-start; }
-  .db-left { flex: 2; min-width: 0; } .db-right { flex: 1.1; min-width: 240px; }
+  /* EER takes the full body width; the MCP capabilities panel overlays on top. */
+  .db-left { flex: 1; min-width: 0; }
+  /* MCP capabilities — overlay slider anchored to .app-shell (an ancestor of the
+     scrolling .main), so it stays pinned and slides OVER the layout when toggled.
+     Closed → translated off the right edge and clipped by .app-shell overflow. */
+  .db-right {
+    position: absolute; top: 0; right: 0; bottom: 0; z-index: 55;
+    width: 380px; max-width: 92vw; overflow-y: auto;
+    background: #fff; box-shadow: -2px 0 10px rgba(0,0,0,.12);
+    transform: translateX(100%); transition: transform .2s ease;
+  }
+  .db-right.open { transform: translateX(0); }
+  .db-right > .card { box-shadow: none; border-radius: 0; min-height: 100%; }
+  .caps-close { background: none; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: #9ca3af; padding: 0 2px; }
+  .caps-close:hover { color: #374151; }
   .schema-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: #6b7280; margin-bottom: 12px; align-items: center; }
   .schema-legend .lg { display: inline-flex; align-items: center; gap: 4px; }
   .tdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -224,7 +238,7 @@
 <div class="app-shell">
 
   <!-- ── Sidebar ───────────────────────────────────────── -->
-  <aside class="sidebar" aria-label="Sessions and usage">
+  <aside class="sidebar" id="sidebar" aria-label="Sessions and usage">
     <div class="sidebar__sessions">
       <div class="card-header" style="margin-bottom:10px;">
         <span class="card-title">Sessions</span>
@@ -363,6 +377,10 @@
             {% if srv.last_sync_status %} · last sync: {{ srv.last_sync_status }}{% if srv.last_synced_at %} ({{ srv.last_synced_at.strftime('%b %d %H:%M') }}){% endif %}{% endif %}</div>
         </div>
         <div style="display:flex;gap:7px;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toggleCaps()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+            MCP capabilities
+          </button>
           <form method="post" action="/database/{{ srv.id }}/sync"
                 onsubmit="showPageLoading('Syncing database…');">
             <button type="submit" class="btn btn-primary btn-sm">Sync</button>
@@ -396,10 +414,11 @@
           </div>
         </div>
 
-        <!-- MCP capabilities -->
-        <div class="db-right">
+        <!-- MCP capabilities — overlay slider, toggled from the db-head button -->
+        <div class="db-right" id="db-caps">
           <div class="card">
-            <div class="card-header"><span class="card-title">MCP capabilities</span></div>
+            <div class="card-header"><span class="card-title">MCP capabilities</span>
+              <button type="button" class="caps-close" onclick="toggleCaps()" aria-label="Close capabilities panel" title="Close">&times;</button></div>
 
             <div class="cap-section">
               <div class="section-loading"><span class="spinner"></span></div>
@@ -462,6 +481,12 @@
 
 {% block scripts %}
 <script>
+  // ── MCP capabilities overlay slider (database view) ───────────────────────
+  function toggleCaps() {
+    const p = document.getElementById('db-caps');
+    if (p) p.classList.toggle('open');
+  }
+
   // ── EER diagram (table boxes + FK edges) — built from window.EER (resources only) ──────
   const _SVGNS = 'http://www.w3.org/2000/svg';
   function _esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
