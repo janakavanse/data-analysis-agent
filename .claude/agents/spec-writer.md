@@ -74,7 +74,7 @@ Defaults when intake is silent:
 
 ## The phased plan (in `spec/roadmap.md` → `## Phases of Development`)
 
-Carve the work into phases, **Phase 1 and Phase 2 at minimum**. Per phase write:
+Carve the work into phases, **Phase 1 and Phase 2 at minimum**. Aim for **1–2 requirements phases total** (Phases 2–N). Each requirements phase must deliver **at least 3 capabilities** — never isolate a single capability in its own phase. Group related capabilities together so each phase is a meaningful, user-testable step forward. Per phase write:
 
 - **Goal** — the one user-testable increment this phase delivers.
 - **Independent slices** — the parallel build units. **Default every slice independent** so agent-builder can fan out a generator per slice concurrently; mark any TRUE dependency explicitly (slice B needs slice A's output) so it serializes only where it must. **Prefer more, smaller disjoint slices over a few fat ones** — concurrency (and thus phase speed) scales with slice count up to the fan-out cap (~min(16, cores−2)). Split along natural file-path seams rather than bundling: e.g. `db-migration`, `api-routes`, `graph-node`, `frontend-components` as separate slices instead of one "backend" + one "frontend". Keep each slice on disjoint paths, and only collapse slices that genuinely can't be separated without a dependency.
@@ -101,6 +101,7 @@ Be your own adversarial reviewer — there is no second pair of eyes, so catch t
 - **Coherence** — vision, capabilities, data-model, architecture, and agent graph agree; each capability's inputs/outputs trace to entities in `data.md`; no capability references data that doesn't exist.
 - **Scope** — **every capability maps to a phase**; anything not required for the primary user journey end-to-end is in a later phase, not Phase 1.
 - **Phase 1** — the full primary journey first-time-right, with the UI stubs planned and labelled, and the backend real on every step of that journey.
+- **Phase ambition** — every requirements phase (2–N) delivers **at least 3 capabilities**; a phase with fewer is too thin — collapse it into the adjacent phase. Target 1–2 requirements phases total, not many thin increments.
 - **Slices** — genuinely independent, or every true dependency marked, so generators can fan out concurrently.
 - **Gates** — every gate is a concrete runnable command against **real keys + the production DB**, not "tests pass".
 - **Agent graph** — if a framework is used, `agent.md` is complete (state/nodes/edges/error-handler/finalize/concurrency/assembly); an incomplete graph is a CRITICAL BLOCKER.

@@ -40,9 +40,9 @@ Phase 1 is the **smallest user-testable win** — the full primary user journey 
 
 ### Phases 2–N — Requirements Phases *(spec-writer derives these)*
 
-Each phase covers a chunk of remaining user requirements from `spec/roadmap.md`. The spec-writer **names these phases after what they deliver**, not after generic production concerns. Aim for all user requirements covered by phase 3–4.
+Each phase covers a chunk of remaining user requirements from `spec/roadmap.md`. The spec-writer **names these phases after what they deliver**, not after generic production concerns. Aim for all user requirements covered by phase 2–3 — fewer, bigger phases beat many thin ones.
 
-- Each phase wires Phase-1 stubs into real functionality — one user-testable increment at a time.
+- Each phase wires Phase-1 stubs into real functionality — a **minimum of 3 capabilities per phase**. Never deliver a single capability in isolation; group related capabilities that form a coherent user story and build them together. A phase with fewer than 3 capabilities is too thin — collapse it into the adjacent phase.
 - All external calls hit the real provider using keys from `.env`; tests assert on real responses (shape/content), not hardcoded strings.
 - **Gate:** The phase's user-testable increment works end-to-end against the real LLM/API; tests pass; working tree clean; human approved.
 
@@ -131,8 +131,8 @@ The spec-writer derives the phases from `spec/roadmap.md`. What is fixed:
 - **Trailing phases are only added when the spec explicitly requires them**
 
 What varies (derived from requirements):
-- How many requirements phases (2–N) — count comes from `spec/roadmap.md`
-- Names of requirements phases — named after what they deliver (e.g. "Upload + Analysis", "Chat Interface", "Report Export"), not generic concerns
+- How many requirements phases (2–N) — count comes from `spec/roadmap.md`; target 1–2 requirements phases. Each must contain at least 3 capabilities — if a phase would have fewer, collapse it into the adjacent one.
+- Names of requirements phases — named after what they deliver (e.g. "Profiling + Charts + Export", "History + Multi-file + Settings"), not generic concerns
 
 ---
 
