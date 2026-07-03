@@ -18,6 +18,10 @@ ROOT = Path(__file__).resolve().parent
 # Enable ANSI escape codes on Windows (no-op on Unix)
 if sys.platform == "win32":
     os.system("")
+    # Windows consoles default to the cp1252 codepage, which can't encode
+    # symbols like ✓/✗/→ — force UTF-8 so print() doesn't raise UnicodeEncodeError.
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 # ── colours ──────────────────────────────────────────────────────────────────
 GREEN  = "\033[32m"
@@ -127,7 +131,7 @@ def check_python_env() -> None:
     header("Python environment")
 
     if not (ROOT / ".venv").exists():
-        fail(".venv not found — run: uv sync")
+        fail(".venv not found — run: uv sync --extra dev")
         return
     ok(".venv present")
 
@@ -135,7 +139,13 @@ def check_python_env() -> None:
     if r.returncode == 0:
         ok("core packages importable (fastapi, sqlalchemy, langgraph, anthropic)")
     else:
-        fail("missing packages — run: uv sync")
+        fail("missing packages — run: uv sync --extra dev")
+
+    r = run(["uv", "run", "python", "-c", "import pytest"])
+    if r.returncode == 0:
+        ok("dev packages importable (pytest)")
+    else:
+        fail("pytest not installed — run: uv sync --extra dev")
 
 
 def check_db() -> None:
