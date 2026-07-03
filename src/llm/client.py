@@ -33,3 +33,7 @@ class LLMClient:
 
     def call_model(self, prompt: str, *, system: str | None = None) -> str:
         return self._provider.call_model(prompt, system=system)
+
+    def call_model_with_usage(self, prompt: str, *, system: str | None = None) -> tuple[str, dict]:
+        """Returns (response_text, {"prompt_tokens", "completion_tokens", "total_tokens"})."""
+        return self._provider.call_model_with_usage(prompt, system=system)

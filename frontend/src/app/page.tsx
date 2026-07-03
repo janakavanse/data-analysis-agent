@@ -1,76 +1,128 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { createSession, createQuery, ApiError, NetworkError } from './lib/api'
+import type { DatasetProfile } from './lib/api'
+import { UploadScreen } from './components/UploadScreen'
+import { DatasetProfileCard } from './components/DatasetProfileCard'
+import { QAThread } from './components/QAThread'
+import type { TurnRecord } from './components/QAThread'
+import { ErrorBanner } from './components/ErrorBanner'
+
+const SESSION_STORAGE_KEY = 'data-analysis-agent:session'
+
+interface StoredSession {
+  sessionId: string
+  dataset: DatasetProfile | null
+}
 
 export default function Home() {
-  const [input, setInput] = useState('')
-  const [result, setResult] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [dataset, setDataset] = useState<DatasetProfile | null>(null)
+  const [bannerError, setBannerError] = useState<string | null>(null)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const [turns, setTurns] = useState<TurnRecord[]>([])
+  const [inFlightQueryId, setInFlightQueryId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!input.trim()) return
-    setLoading(true)
-    setError(null)
-    setResult(null)
+  const initSession = useCallback(async () => {
+    setSessionError(null)
     try {
-      const res = await fetch('/runs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input_text: input }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.detail?.message ?? `Request failed (${res.status})`)
-      } else if (data.data?.error) {
-        setError(data.data.error)
-      } else {
-        setResult(data.data.output_text)
+      const stored = typeof window !== 'undefined' ? window.sessionStorage.getItem(SESSION_STORAGE_KEY) : null
+      if (stored) {
+        const parsed: StoredSession = JSON.parse(stored)
+        setSessionId(parsed.sessionId)
+        if (parsed.dataset) setDataset(parsed.dataset)
+        return
       }
-    } catch {
-      setError('Network error — is the server running?')
-    } finally {
-      setLoading(false)
+      const session = await createSession()
+      setSessionId(session.session_id)
+    } catch (err) {
+      if (err instanceof NetworkError) {
+        setBannerError(err.message)
+      } else {
+        setSessionError('Could not start a session. Please reload the page.')
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    initSession()
+  }, [initSession])
+
+  useEffect(() => {
+    if (!sessionId || typeof window === 'undefined') return
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ sessionId, dataset }))
+  }, [sessionId, dataset])
+
+  function handleUploaded(profile: DatasetProfile) {
+    setDataset(profile)
+    setTurns([])
+    setInFlightQueryId(null)
+    setNotice(null)
+  }
+
+  function handleReplaceClick() {
+    setDataset(null)
+    setTurns([])
+    setInFlightQueryId(null)
+  }
+
+  async function handleAsk(question: string) {
+    if (!sessionId || !dataset || inFlightQueryId) return
+    setNotice(null)
+    try {
+      const created = await createQuery(sessionId, dataset.dataset_id, question)
+      setTurns(t => [
+        ...t,
+        { queryId: created.query_id, question, turnIndex: created.turn_index, initialStatus: created.status },
+      ])
+      setInFlightQueryId(created.query_id)
+    } catch (err) {
+      if (err instanceof NetworkError) {
+        setBannerError(err.message)
+      } else if (err instanceof ApiError && err.status === 409) {
+        setNotice('Still working on the previous question…')
+      } else if (err instanceof ApiError) {
+        setNotice(err.message)
+      } else {
+        setNotice('Something went wrong submitting your question. Please try again.')
+      }
     }
   }
 
+  function handleTerminal(queryId: string) {
+    setInFlightQueryId(current => (current === queryId ? null : current))
+  }
+
   return (
-    <main className="mx-auto max-w-2xl px-4 py-16">
-      <h1 className="mb-8 text-3xl font-bold tracking-tight">Agent</h1>
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-4 py-8">
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Data Analysis Agent</h1>
+        <p className="text-sm text-gray-500">Upload a spreadsheet, then ask questions about it in plain English.</p>
+      </header>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <textarea
-          className="w-full rounded-lg border border-gray-300 p-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          rows={4}
-          placeholder="Enter text to transform…"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          disabled={loading}
+      {bannerError && <ErrorBanner message={bannerError} onDismiss={() => setBannerError(null)} />}
+
+      {sessionError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
+          {sessionError}
+        </div>
+      )}
+
+      {dataset && <DatasetProfileCard dataset={dataset} onReplaceClick={handleReplaceClick} />}
+
+      {!dataset ? (
+        <UploadScreen sessionId={sessionId} onUploaded={handleUploaded} onNetworkError={setBannerError} />
+      ) : (
+        <QAThread
+          turns={turns}
+          inFlight={inFlightQueryId !== null}
+          notice={notice}
+          onAsk={handleAsk}
+          onTerminal={handleTerminal}
+          onNetworkError={setBannerError}
         />
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? 'Running…' : 'Run'}
-        </button>
-      </form>
-
-      {error && (
-        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {result && (
-        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4 text-sm whitespace-pre-wrap shadow-sm">
-          {result}
-        </div>
-      )}
-
-      {!result && !error && !loading && (
-        <p className="mt-10 text-center text-sm text-gray-400">Results will appear here.</p>
       )}
     </main>
   )

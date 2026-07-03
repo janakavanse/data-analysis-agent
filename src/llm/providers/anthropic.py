@@ -18,3 +18,20 @@ class AnthropicProvider:
             kwargs["system"] = system
         msg = self._client.messages.create(**kwargs)
         return msg.content[0].text
+
+    def call_model_with_usage(self, prompt: str, *, system: str | None = None) -> tuple[str, dict]:
+        kwargs: dict = dict(
+            model=self._model,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if system:
+            kwargs["system"] = system
+        msg = self._client.messages.create(**kwargs)
+        prompt_tokens = msg.usage.input_tokens
+        completion_tokens = msg.usage.output_tokens
+        return msg.content[0].text, {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        }

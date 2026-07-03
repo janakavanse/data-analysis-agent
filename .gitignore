@@ -16,3 +16,12 @@ build/
 *.db-shm
 *.db-wal
 data/
+
+# Playwright (tests/e2e)
+playwright-report/
+test-results/
+frontend/out/
+
+# npm artifacts inside frontend/ — this project standardizes on pnpm there
+frontend/package-lock.json
+*.tsbuildinfo

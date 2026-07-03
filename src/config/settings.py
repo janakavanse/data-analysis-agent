@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="")
     gemini_api_key: str = Field(default="")
 
+    # Number of prior Q&A turns (per session) fed back into the code-gen prompt.
+    conversation_history_turns: int = Field(default=5)
+
 
 _settings: Settings | None = None
 
