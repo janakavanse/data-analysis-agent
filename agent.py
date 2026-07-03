@@ -50,6 +50,18 @@ def run(cmd: list[str], *, cwd: Path = ROOT, capture: bool = True) -> subprocess
 def which(name: str) -> bool:
     return shutil.which(name) is not None
 
+def resolve(name: str) -> str:
+    """Resolve a command to its real executable path.
+
+    On Windows, Node-ecosystem tools like pnpm/npm/npx are installed as
+    `.cmd` shims rather than `.exe` files. subprocess.run() with a bare
+    argv list (shell=False) cannot locate a `.cmd` shim by name alone and
+    raises OSError (WinError 2). shutil.which() resolves the shim's real
+    path (including the .cmd extension via PATHEXT), which subprocess can
+    then execute directly without needing shell=True.
+    """
+    return shutil.which(name) or name
+
 def cmd_version(cmd: list[str]) -> str | None:
     r = run(cmd)
     return r.stdout.strip().splitlines()[0] if r.returncode == 0 else None
@@ -99,7 +111,7 @@ def check_tools() -> None:
                 fail(f"node {nv} found — need 20+; install from https://nodejs.org/")
         except ValueError:
             warn(f"could not parse node version: {nv}")
-        v = cmd_version(["pnpm", "--version"])
+        v = cmd_version([resolve("pnpm"), "--version"])
         if v: ok(f"pnpm {v}")
         else: warn("pnpm not found — needed for frontend build: npm install -g pnpm")
     else:
@@ -209,7 +221,7 @@ def do_run() -> None:
     fe = ROOT / "frontend"
     if which("pnpm") and fe.exists():
         info("building frontend...")
-        r = run(["pnpm", "build"], cwd=fe, capture=False)
+        r = run([resolve("pnpm"), "build"], cwd=fe, capture=False)
         if r.returncode != 0:
             print(f"\n{RED}frontend build failed.{RESET}")
             sys.exit(1)

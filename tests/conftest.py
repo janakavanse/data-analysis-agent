@@ -42,3 +42,29 @@ def api_client(_isolated_db):
     from api import app
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+def _isolated_uploads(tmp_path, monkeypatch):
+    """Redirect uploaded-file storage to a per-test temp directory so tests
+    never write into the real data/uploads/ directory."""
+    import analysis.storage as storage_module
+
+    uploads_root = tmp_path / "uploads"
+    monkeypatch.setattr(storage_module, "_uploads_root", lambda: uploads_root)
+    yield uploads_root
+
+
+@pytest.fixture
+def sample_csv(tmp_path):
+    """A small, deterministic CSV fixture with a pre-computed expected mean."""
+    import csv
+
+    path = tmp_path / "sample.csv"
+    rows = [{"id": i, "amount": float(i), "category": "a" if i % 2 == 0 else "b"} for i in range(1, 11)]
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["id", "amount", "category"])
+        writer.writeheader()
+        writer.writerows(rows)
+    expected_mean = sum(r["amount"] for r in rows) / len(rows)
+    return {"path": path, "expected_mean": expected_mean, "row_count": len(rows)}

@@ -1,0 +1,9 @@
+{
+  "name": "data-analysis-agent-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Repo-root Playwright E2E harness for the data-analysis-agent (see tests/e2e/). The Next.js app itself lives in frontend/.",
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}
