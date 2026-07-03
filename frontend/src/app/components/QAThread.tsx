@@ -35,6 +35,12 @@ export function QAThread({ turns, inFlight, notice, onAsk, onTerminal, onNetwork
     setQuestion('')
   }
 
+  function handleFollowupClick(followupQuestion: string) {
+    if (inFlight) return
+    onAsk(followupQuestion)
+    setQuestion('')
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex flex-col gap-6" data-testid="qa-thread">
@@ -52,6 +58,7 @@ export function QAThread({ turns, inFlight, notice, onAsk, onTerminal, onNetwork
             initialStatus={turn.initialStatus}
             onTerminal={onTerminal}
             onNetworkError={onNetworkError}
+            onFollowupClick={handleFollowupClick}
           />
         ))}
         <div ref={bottomRef} />
@@ -84,8 +91,8 @@ export function QAThread({ turns, inFlight, notice, onAsk, onTerminal, onNetwork
           </button>
         </div>
         <p className="text-xs text-gray-400">
-          Tip: reference exact column names for best results — clarifying questions for ambiguous phrasing arrive in
-          Phase 2.
+          Tip: reference exact column names for best results. If your question is ambiguous, the agent will ask a
+          clarifying question here before answering.
         </p>
       </form>
     </div>

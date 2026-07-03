@@ -16,6 +16,8 @@ class QueryResponse(BaseModel):
     generated_code: str | None = None
     retry_count: int = 0
     token_usage: dict | None = None
+    chart_spec: dict | None = None
+    suggested_followups: list[str] | None = None
     error: str | None = None
     created_at: str
     completed_at: str | None = None

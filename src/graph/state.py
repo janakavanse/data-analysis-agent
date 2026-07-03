@@ -18,11 +18,15 @@ class AgentState(TypedDict, total=False):
     generated_code: str | None
     retry_count: int
     last_error: str | None
+    status_decision: str | None        # "ok" | "needs_clarification" | "unanswerable"
+    followups: list[str] | None
+    clarification_message: str | None  # message text for needs_clarification/unanswerable
 
     # Output
     answer_text: str | None
     result_table: list[dict] | None
     token_usage: dict | None
+    chart_spec_json: str | None
 
     # Control
     error: str | None

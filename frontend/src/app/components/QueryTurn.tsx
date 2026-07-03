@@ -5,7 +5,7 @@ import { getQuery, NetworkError } from '../lib/api'
 import type { QueryDetail } from '../lib/api'
 import { AnswerCard } from './AnswerCard'
 
-const TERMINAL_STATUSES = new Set(['completed', 'failed'])
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'needs_clarification', 'unanswerable'])
 const POLL_INTERVAL_MS = 750
 // Heuristic only: if a query sticks on "running_analysis" for several poll
 // cycles in a row, briefly surface a retry hint. The polling response does
@@ -41,9 +41,17 @@ interface Props {
   initialStatus: string
   onTerminal: (queryId: string) => void
   onNetworkError: (message: string) => void
+  onFollowupClick?: (question: string) => void
 }
 
-export function QueryTurn({ queryId, question, initialStatus, onTerminal, onNetworkError }: Props) {
+export function QueryTurn({
+  queryId,
+  question,
+  initialStatus,
+  onTerminal,
+  onNetworkError,
+  onFollowupClick,
+}: Props) {
   const [status, setStatus] = useState(initialStatus)
   const [detail, setDetail] = useState<QueryDetail | null>(null)
   const [stuckCycles, setStuckCycles] = useState(0)
@@ -101,7 +109,32 @@ export function QueryTurn({ queryId, question, initialStatus, onTerminal, onNetw
 
       {status === 'completed' && detail && (
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm" data-testid="answer-card">
-          <AnswerCard detail={detail} />
+          <AnswerCard detail={detail} onFollowupClick={onFollowupClick} />
+        </div>
+      )}
+
+      {status === 'needs_clarification' && (
+        <div
+          className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"
+          data-testid="clarification-bubble"
+        >
+          <span aria-hidden>💬</span>
+          <div>
+            <p className="font-medium">{detail?.error ?? 'Could you clarify your question?'}</p>
+            <p className="mt-1 text-blue-600">Answer in the box below to continue.</p>
+          </div>
+        </div>
+      )}
+
+      {status === 'unanswerable' && (
+        <div
+          className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"
+          data-testid="unanswerable-bubble"
+        >
+          <span aria-hidden>💬</span>
+          <div>
+            <p className="font-medium">{detail?.error ?? "This can't be answered from this data."}</p>
+          </div>
         </div>
       )}
 

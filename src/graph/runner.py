@@ -65,9 +65,13 @@ def run_query(query_id: str) -> None:
                 "generated_code": None,
                 "retry_count": 0,
                 "last_error": None,
+                "status_decision": None,
+                "followups": None,
+                "clarification_message": None,
                 "answer_text": None,
                 "result_table": None,
                 "token_usage": None,
+                "chart_spec_json": None,
                 "error": None,
                 "status": None,
             }

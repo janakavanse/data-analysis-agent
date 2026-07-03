@@ -59,7 +59,10 @@ test.describe('Phase 1 — upload, ask, get a real answer', () => {
     await expect(tokenBadge).toBeVisible()
     await expect(tokenBadge).toContainText('tokens')
     const tokenText = (await tokenBadge.textContent()) ?? ''
-    expect(tokenText).toMatch(/\d+ \+ \d+ = \d+ tokens/)
+    // Some providers (e.g. Gemini thinking models) report a non-zero
+    // thinking_tokens component, added as a labelled third addend so the
+    // sum is literally correct (see AnswerCard's honest token display).
+    expect(tokenText).toMatch(/\d+ \+ \d+( \+ \d+ \(thinking\))? = \d+ tokens/)
 
     // Collapsed code panel — expands to reveal non-empty generated code
     const codeToggle = firstTurn.getByTestId('toggle-code')
@@ -71,19 +74,15 @@ test.describe('Phase 1 — upload, ask, get a real answer', () => {
     const codeText = (await codePanel.textContent()) ?? ''
     expect(codeText.trim().length).toBeGreaterThan(0)
 
-    // --- Stub surfaces: visible, labelled, and non-interactive ---
-    const chartStub = firstTurn.getByTestId('chart-stub')
-    await expect(chartStub).toBeVisible()
-    await expect(chartStub).toContainText('Interactive chart — coming in Phase 2')
+    // --- Phase 2 surfaces: real, not stubs (see tests/e2e/phase2.spec.ts for
+    // full chart/follow-up/export coverage) ---
+    // A purely scalar average has no chart_spec, so no chart panel renders.
+    await expect(firstTurn.getByTestId('chart')).toHaveCount(0)
 
-    const followupStub = firstTurn.getByTestId('followup-stub')
-    await expect(followupStub).toBeVisible()
-    await expect(followupStub).toContainText('Suggested follow-ups — coming in Phase 2')
-
-    const exportStub = firstTurn.getByTestId('export-stub')
-    await expect(exportStub).toBeVisible()
-    await expect(exportStub).toBeDisabled()
-    await expect(exportStub).toContainText('coming in Phase 2')
+    const exportButton = firstTurn.getByTestId('export-button')
+    await expect(exportButton).toBeVisible()
+    await expect(exportButton).toBeEnabled()
+    await expect(exportButton).toContainText('Export cleaned data')
 
     // --- Second, follow-up question in the same session ---
     await expect(questionInput).toBeEnabled({ timeout: 30_000 })

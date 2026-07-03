@@ -7,6 +7,8 @@ import builtins
 import threading
 
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
 from analysis.storage import load_dataframe
 
@@ -50,6 +52,8 @@ def execute_generated_code(
         "__builtins__": {name: getattr(builtins, name) for name in _SAFE_BUILTINS},
         "pd": pd,
         "df": df,
+        "go": go,
+        "px": px,
     }
 
     exception_box: list[Exception] = []
@@ -88,4 +92,9 @@ def execute_generated_code(
             for row in capped.to_dict(orient="records")
         ]
 
-    return {"answer": answer, "table": table}
+    chart_spec_json = None
+    raw_chart = restricted_globals.get("chart")
+    if isinstance(raw_chart, go.Figure):
+        chart_spec_json = raw_chart.to_json()
+
+    return {"answer": answer, "table": table, "chart_spec_json": chart_spec_json}

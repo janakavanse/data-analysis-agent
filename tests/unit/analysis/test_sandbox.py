@@ -52,7 +52,39 @@ def test_missing_answer_variable_raises(dataset_path):
         execute_generated_code(code, dataset_path, "csv")
 
 
+def test_chart_variable_is_captured_as_plotly_json(dataset_path):
+    code = (
+        "grouped = df.groupby('category', as_index=False)['amount'].mean()\n"
+        "answer = 'Average amount by category computed.'\n"
+        "chart = px.bar(grouped, x='category', y='amount')\n"
+    )
+    result = execute_generated_code(code, dataset_path, "csv", timeout_seconds=20)
+
+    assert result["chart_spec_json"] is not None
+    import json
+
+    parsed = json.loads(result["chart_spec_json"])
+    assert "data" in parsed and "layout" in parsed
+
+
+def test_missing_chart_variable_is_normal_not_an_error(dataset_path):
+    code = "answer = str(df['amount'].sum())\n"
+    result = execute_generated_code(code, dataset_path, "csv")
+    assert result["chart_spec_json"] is None
+
+
+def test_non_figure_chart_variable_is_ignored(dataset_path):
+    code = "chart = 'not a figure'\nanswer = 'ok'\n"
+    result = execute_generated_code(code, dataset_path, "csv")
+    assert result["chart_spec_json"] is None
+
+
 def test_infinite_loop_times_out(dataset_path):
+    # NOTE: intentionally the LAST test in this module — the code under test
+    # runs `while True: pass` in a non-daemon-killable real thread that keeps
+    # spinning (and contending for the GIL) for the rest of the process
+    # lifetime once it times out, since Python threads cannot be forcibly
+    # killed. Running it last avoids starving/slowing every test that follows.
     code = "while True:\n    pass\n"
     with pytest.raises(SandboxExecutionError, match="timed out"):
         execute_generated_code(code, dataset_path, "csv", timeout_seconds=1)

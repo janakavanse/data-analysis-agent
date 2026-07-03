@@ -33,5 +33,6 @@ class AnthropicProvider:
         return msg.content[0].text, {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            "thinking_tokens": 0,
             "total_tokens": prompt_tokens + completion_tokens,
         }

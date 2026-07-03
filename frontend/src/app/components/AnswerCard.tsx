@@ -1,19 +1,104 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { QueryDetail } from '../lib/api'
+import { exportQuery, ApiError, NetworkError } from '../lib/api'
+import { PlotlyChart } from './PlotlyChart'
 
-const FOLLOWUP_STUB_CHIPS = [
-  'e.g. break this down further',
-  'e.g. compare to another column',
-  'e.g. filter to a subset',
-]
+type SortDirection = 'asc' | 'desc'
 
-export function AnswerCard({ detail }: { detail: QueryDetail }) {
+function isNumeric(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (isNumeric(value)) {
+    // Thousands separators for large numbers; sensible decimal places for
+    // fractional values. Strings/dates pass through untouched (see below).
+    const decimals = Number.isInteger(value) ? 0 : 2
+    return value.toLocaleString(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })
+  }
+  return String(value)
+}
+
+export function AnswerCard({
+  detail,
+  onFollowupClick,
+}: {
+  detail: QueryDetail
+  onFollowupClick?: (question: string) => void
+}) {
   const [showCode, setShowCode] = useState(false)
+  const [sortColumn, setSortColumn] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+
   const table = detail.result_table ?? null
   const columns = table && table.length > 0 ? Object.keys(table[0]) : []
   const usage = detail.token_usage
+  const followups = detail.suggested_followups ?? null
+  const chartSpec = detail.chart_spec ?? null
+
+  const sortedTable = useMemo(() => {
+    if (!table || !sortColumn) return table
+    const copy = [...table]
+    copy.sort((a, b) => {
+      const av = a[sortColumn]
+      const bv = b[sortColumn]
+      let cmp: number
+      if (isNumeric(av) && isNumeric(bv)) {
+        cmp = av - bv
+      } else {
+        cmp = String(av ?? '').localeCompare(String(bv ?? ''))
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+    return copy
+  }, [table, sortColumn, sortDirection])
+
+  function handleSort(col: string) {
+    if (sortColumn === col) {
+      setSortDirection(d => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortColumn(col)
+      setSortDirection('asc')
+    }
+  }
+
+  async function handleExport() {
+    setExportError(null)
+    setExporting(true)
+    try {
+      const { blob, filename } = await exportQuery(detail.query_id, 'csv')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      if (err instanceof NetworkError) {
+        setExportError(err.message)
+      } else if (err instanceof ApiError && err.status === 400) {
+        setExportError('This answer has no exportable data table.')
+      } else if (err instanceof ApiError) {
+        setExportError(err.message)
+      } else {
+        setExportError('Export failed. Please try again.')
+      }
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const usageThinking = usage?.thinking_tokens ?? 0
 
   return (
     <div className="space-y-4">
@@ -21,24 +106,33 @@ export function AnswerCard({ detail }: { detail: QueryDetail }) {
         {detail.answer_text}
       </p>
 
-      {table && table.length > 0 && (
+      {sortedTable && sortedTable.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-gray-200" data-testid="result-table">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
                 {columns.map(col => (
-                  <th key={col} className="px-3 py-2 text-left font-medium text-gray-600">
+                  <th
+                    key={col}
+                    onClick={() => handleSort(col)}
+                    className="cursor-pointer select-none px-3 py-2 text-left font-medium text-gray-600 hover:text-gray-900"
+                  >
                     {col}
+                    {sortColumn === col && (
+                      <span className="ml-1 text-gray-400" aria-hidden>
+                        {sortDirection === 'asc' ? '▲' : '▼'}
+                      </span>
+                    )}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
-              {table.map((row, i) => (
+              {sortedTable.map((row, i) => (
                 <tr key={i}>
                   {columns.map(col => (
                     <td key={col} className="px-3 py-2 text-gray-700">
-                      {String(row[col] ?? '')}
+                      {formatCell(row[col])}
                     </td>
                   ))}
                 </tr>
@@ -48,17 +142,10 @@ export function AnswerCard({ detail }: { detail: QueryDetail }) {
         </div>
       )}
 
-      {/* Chart area — non-functional stub, arrives in Phase 2 */}
-      <div
-        aria-disabled="true"
-        data-testid="chart-stub"
-        className="flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-400"
-      >
-        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-          Phase 2
-        </span>
-        Interactive chart — coming in Phase 2
-      </div>
+      {/* Chart: real, interactive Plotly figure — rendered only when the
+          backend produced one for this turn. A purely scalar answer shows
+          no chart panel at all (per spec/ui.md), not an empty placeholder. */}
+      {chartSpec && <PlotlyChart spec={chartSpec} />}
 
       <div>
         <button
@@ -83,7 +170,9 @@ export function AnswerCard({ detail }: { detail: QueryDetail }) {
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
         {usage && (
           <span className="rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-600" data-testid="token-usage">
-            {usage.prompt_tokens} + {usage.completion_tokens} = {usage.total_tokens} tokens
+            {usageThinking > 0
+              ? `${usage.prompt_tokens} + ${usage.completion_tokens} + ${usageThinking} (thinking) = ${usage.total_tokens} tokens`
+              : `${usage.prompt_tokens} + ${usage.completion_tokens} = ${usage.total_tokens} tokens`}
           </span>
         )}
         {detail.retry_count === 1 && (
@@ -93,33 +182,43 @@ export function AnswerCard({ detail }: { detail: QueryDetail }) {
         )}
       </div>
 
-      {/* Follow-up chips — non-functional stub, arrives in Phase 2 */}
-      <div data-testid="followup-stub">
-        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">
-          Suggested follow-ups — coming in Phase 2
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {FOLLOWUP_STUB_CHIPS.map(text => (
-            <span
-              key={text}
-              aria-disabled="true"
-              className="cursor-not-allowed select-none rounded-full border border-dashed border-gray-200 px-3 py-1 text-xs text-gray-300"
-            >
-              {text}
-            </span>
-          ))}
+      {/* Follow-up chips: real and clickable, only rendered when the
+          backend suggested some for this turn. */}
+      {followups && followups.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">Suggested follow-ups</p>
+          <div className="flex flex-wrap gap-2">
+            {followups.map(text => (
+              <button
+                key={text}
+                type="button"
+                data-testid="followup-chip"
+                onClick={() => onFollowupClick?.(text)}
+                className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              >
+                {text}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      <button
-        type="button"
-        disabled
-        title="Export becomes available in Phase 2"
-        data-testid="export-stub"
-        className="cursor-not-allowed rounded-lg border border-gray-200 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-400"
-      >
-        Export cleaned data (coming in Phase 2)
-      </button>
+      <div className="flex flex-col items-start gap-1">
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          data-testid="export-button"
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {exporting ? 'Exporting…' : 'Export cleaned data'}
+        </button>
+        {exportError && (
+          <p className="text-xs text-red-600" data-testid="export-error">
+            {exportError}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

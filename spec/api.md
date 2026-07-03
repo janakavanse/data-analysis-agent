@@ -126,9 +126,9 @@ REST (FastAPI), JSON envelope on every response — `{"data": ..., "error": null
     "result_table": [{"category": "food", "avg_amount": 84.21}, {"category": "travel", "avg_amount": 212.50}],
     "generated_code": "result = df.groupby('category')['amount'].mean()\n...",
     "retry_count": 0,
-    "token_usage": {"prompt_tokens": 412, "completion_tokens": 96, "total_tokens": 508},
+    "token_usage": {"prompt_tokens": 412, "completion_tokens": 96, "total_tokens": 508, "thinking_tokens": 0},
     "chart_spec": null,
-    "suggested_followups": null,
+    "suggested_followups": ["What is the median amount by category?", "Which category has the most transactions?"],
     "error": null,
     "created_at": "iso8601",
     "completed_at": "iso8601"
@@ -147,7 +147,7 @@ REST (FastAPI), JSON envelope on every response — `{"data": ..., "error": null
     "answer_text": null,
     "error": "Column 'revenu' does not exist. Did you mean 'revenue'? The generated code failed twice; please rephrase your question.",
     "retry_count": 1,
-    "token_usage": {"prompt_tokens": 780, "completion_tokens": 140, "total_tokens": 920}
+    "token_usage": {"prompt_tokens": 780, "completion_tokens": 140, "total_tokens": 920, "thinking_tokens": 0}
   },
   "error": null
 }

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
@@ -29,11 +30,14 @@ def _query_response(row: QueryRow) -> dict:
             "prompt_tokens": row.prompt_tokens,
             "completion_tokens": row.completion_tokens,
             "total_tokens": row.total_tokens,
+            "thinking_tokens": row.thinking_tokens or 0,
         }
 
-    import json
-
     result_table = json.loads(row.result_table_json) if row.result_table_json else None
+    chart_spec = json.loads(row.chart_spec_json) if row.chart_spec_json else None
+    suggested_followups = (
+        json.loads(row.suggested_followups_json) if row.suggested_followups_json else None
+    )
 
     return QueryResponse(
         query_id=row.id,
@@ -45,6 +49,8 @@ def _query_response(row: QueryRow) -> dict:
         generated_code=row.generated_code,
         retry_count=row.retry_count,
         token_usage=token_usage,
+        chart_spec=chart_spec,
+        suggested_followups=suggested_followups,
         error=row.error_message,
         created_at=row.created_at.isoformat(),
         completed_at=_iso(row.completed_at),

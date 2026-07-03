@@ -50,6 +50,17 @@ export interface TokenUsage {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  thinking_tokens?: number
+}
+
+// Loosely typed Plotly figure ({data, layout, ...}) — kept as a broad shape
+// here to avoid a hard dependency between the fetch client and the chart
+// rendering library; AnswerCard narrows it via `unknown as PlotParams` at
+// the render boundary.
+export interface ChartSpec {
+  data: unknown[]
+  layout?: Record<string, unknown>
+  [key: string]: unknown
 }
 
 export interface QueryCreated {
@@ -68,7 +79,7 @@ export interface QueryDetail {
   generated_code?: string | null
   retry_count?: number
   token_usage?: TokenUsage | null
-  chart_spec?: unknown
+  chart_spec?: ChartSpec | null
   suggested_followups?: string[] | null
   error?: string | null
   created_at?: string
@@ -143,4 +154,41 @@ export function getQuery(queryId: string): Promise<QueryDetail> {
 
 export function getSessionQueries(sessionId: string): Promise<QueryHistoryItem[]> {
   return sendRequest<QueryHistoryItem[]>(`/sessions/${sessionId}/queries`)
+}
+
+export interface ExportResult {
+  blob: Blob
+  filename: string
+}
+
+// Not routed through sendRequest(): the export endpoint returns a binary
+// file stream, not the {data, error} JSON envelope, per spec/api.md.
+export async function exportQuery(queryId: string, format: 'csv' | 'xlsx' = 'csv'): Promise<ExportResult> {
+  let res: Response
+  try {
+    res = await fetch(`/queries/${queryId}/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format }),
+    })
+  } catch {
+    throw new NetworkError("Couldn't reach the server — check it's running and try again.")
+  }
+
+  if (!res.ok) {
+    let message = `Export failed (${res.status})`
+    try {
+      const body = (await res.json()) as { detail?: { message?: string } }
+      message = body?.detail?.message ?? message
+    } catch {
+      // no JSON body — keep the generic message
+    }
+    throw new ApiError(res.status, message)
+  }
+
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^";]+)"?/.exec(disposition)
+  const filename = match?.[1] ?? `export.${format}`
+  const blob = await res.blob()
+  return { blob, filename }
 }

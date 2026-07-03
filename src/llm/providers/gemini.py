@@ -37,9 +37,13 @@ class GeminiProvider:
         usage = response.usage_metadata
         prompt_tokens = getattr(usage, "prompt_token_count", None) or 0
         completion_tokens = getattr(usage, "candidates_token_count", None) or 0
-        total_tokens = getattr(usage, "total_token_count", None) or (prompt_tokens + completion_tokens)
+        thinking_tokens = getattr(usage, "thoughts_token_count", None) or 0
+        total_tokens = getattr(usage, "total_token_count", None) or (
+            prompt_tokens + completion_tokens + thinking_tokens
+        )
         return response.text, {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            "thinking_tokens": thinking_tokens,
             "total_tokens": total_tokens,
         }

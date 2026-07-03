@@ -62,6 +62,9 @@ class QueryRow(Base):
     completion_tokens: Mapped[int | None] = mapped_column(nullable=True)
     total_tokens: Mapped[int | None] = mapped_column(nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chart_spec_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suggested_followups_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    thinking_tokens: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, default=_now
     )

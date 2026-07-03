@@ -43,7 +43,7 @@ def _poll_query(api_client, query_id: str, timeout: float = 90.0) -> dict:
     while time.monotonic() < deadline:
         r = api_client.get(f"/queries/{query_id}")
         data = r.json()["data"]
-        if data["status"] in ("completed", "failed"):
+        if data["status"] in ("completed", "failed", "needs_clarification", "unanswerable"):
             return data
         time.sleep(0.25)
     pytest.fail(f"Query {query_id} did not reach a terminal status within {timeout}s: {data}")
@@ -160,6 +160,11 @@ def test_execution_retry_never_exceeds_one(api_client):
     if data["status"] == "failed":
         assert data["retry_count"] == 1
         assert data["error"]
+    elif data["status"] == "unanswerable":
+        # Phase 2: the model may classify the misspelled column as
+        # unanswerable up front rather than generating code that fails
+        # execution — either path is a correct, no-guess outcome.
+        assert data["error"]
     else:
         assert data["status"] == "completed"
 
@@ -224,3 +229,96 @@ def test_privacy_no_raw_row_values_reach_the_llm_prompt(api_client):
     assert "secret-row-value-1," not in combined_prompt_text
     assert "secret-row-value-2500" not in combined_prompt_text
     assert "secret-row-value-5000" not in combined_prompt_text
+
+
+def test_ambiguous_question_returns_needs_clarification(api_client):
+    csv_bytes, _ = _make_large_csv()
+    session_id, dataset_id = _create_session_and_dataset(api_client, csv_bytes)
+
+    r = api_client.post(
+        f"/sessions/{session_id}/queries",
+        json={
+            "dataset_id": dataset_id,
+            "question": "What about that other thing we discussed earlier, the one with the weird value?",
+        },
+    )
+    data = _poll_query(api_client, r.json()["data"]["query_id"])
+
+    assert data["status"] == "needs_clarification", data
+    assert data["generated_code"] is None
+    assert data["error"] and len(data["error"]) > 0
+
+
+def test_nonexistent_column_question_returns_unanswerable(api_client):
+    csv_bytes, _ = _make_large_csv()
+    session_id, dataset_id = _create_session_and_dataset(api_client, csv_bytes)
+
+    r = api_client.post(
+        f"/sessions/{session_id}/queries",
+        json={
+            "dataset_id": dataset_id,
+            "question": "What is the total value of the 'unicorn_sightings' column in this dataset?",
+        },
+    )
+    data = _poll_query(api_client, r.json()["data"]["query_id"])
+
+    assert data["status"] == "unanswerable", data
+    assert data["generated_code"] is None
+    assert data["error"]
+
+
+def test_chart_appropriate_question_returns_valid_chart_spec(api_client):
+    csv_bytes, _ = _make_large_csv()
+    session_id, dataset_id = _create_session_and_dataset(api_client, csv_bytes)
+
+    r = api_client.post(
+        f"/sessions/{session_id}/queries",
+        json={
+            "dataset_id": dataset_id,
+            "question": "Show me the breakdown (sum of amount) by category as a chart.",
+        },
+    )
+    data = _poll_query(api_client, r.json()["data"]["query_id"])
+
+    assert data["status"] == "completed", data.get("error")
+    assert data["chart_spec"] is not None
+    # A valid Plotly figure JSON has a "data" list and a "layout" dict.
+    assert "data" in data["chart_spec"]
+    assert "layout" in data["chart_spec"]
+
+
+def test_scalar_question_has_no_chart_spec(api_client):
+    csv_bytes, _ = _make_large_csv()
+    session_id, dataset_id = _create_session_and_dataset(api_client, csv_bytes)
+
+    r = api_client.post(
+        f"/sessions/{session_id}/queries",
+        json={
+            "dataset_id": dataset_id,
+            "question": "What is the total sum of the amount column? Just give me the single number.",
+        },
+    )
+    data = _poll_query(api_client, r.json()["data"]["query_id"])
+
+    assert data["status"] == "completed", data.get("error")
+    assert data["chart_spec"] is None
+
+
+def test_successful_query_reports_thinking_tokens_and_followups(api_client):
+    csv_bytes, _ = _make_large_csv()
+    session_id, dataset_id = _create_session_and_dataset(api_client, csv_bytes)
+
+    r = api_client.post(
+        f"/sessions/{session_id}/queries",
+        json={"dataset_id": dataset_id, "question": "What is the average of the amount column?"},
+    )
+    data = _poll_query(api_client, r.json()["data"]["query_id"])
+
+    assert data["status"] == "completed", data.get("error")
+    assert data["token_usage"] is not None
+    assert "thinking_tokens" in data["token_usage"]
+    assert data["token_usage"]["thinking_tokens"] >= 0
+
+    assert data["suggested_followups"] is not None
+    assert 2 <= len(data["suggested_followups"]) <= 3
+    assert all(isinstance(f, str) and f.strip() for f in data["suggested_followups"])

@@ -4,6 +4,8 @@ from graph.state import AgentState
 def after_generate_code(state: AgentState) -> str:
     if state.get("error"):
         return "handle_error"
+    if state.get("status_decision") in ("needs_clarification", "unanswerable"):
+        return "finalize_clarification"
     return "execute_code"
 
 
